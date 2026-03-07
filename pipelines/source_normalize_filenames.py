@@ -1,11 +1,6 @@
-from glob import glob
 import sys
-import zipfile
-import shutil
 import os
-from multiprocessing import Pool
-
-import utils
+from pathlib import Path
 
 SILENT = False
 
@@ -18,10 +13,24 @@ def main():
         print('source argument missing...')
         exit()
     
-    filepaths = sorted(glob(f'source-store/{source}/*'))
+    root_dir = Path(f'source-store/{source}')
+    for path in root_dir.iterdir():
+        if not path.is_file():
+            continue
 
-    for filepath in filepaths:
-        print(filepath)
+        name = path.name
 
+        # Remove query parameters from filenames
+        if ".tif?download=1" in name:
+            name = name.replace("?download=1", "")
+        
+        # Replace any periods in the filename with underscores
+        stem, ext = os.path.splitext(name)
+        new_name = stem.replace(".", "_") + ext
+        new_path = path.with_name(new_name)
+
+        os.rename(path, new_path)
+        print(f"Renamed {name} -> {new_name}")
+        
 if __name__ == '__main__':
     main()

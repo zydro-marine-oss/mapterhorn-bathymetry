@@ -24,6 +24,8 @@ From `pipelines/` (`uv run mapterhorn` prints the cheat sheet):
 ```bash
 cd pipelines
 uv sync
+cp env.example .env                 # required; gitignored
+# edit .env → MAPTERHORN_DATA_ROOT=/path/outside/git
 uv run mapterhorn storage              # confirm data disks
 uv run mapterhorn jobs autodownload -y # download + prep (SQLite jobs; resumable)
 uv run mapterhorn covering             # plan tiles
@@ -45,7 +47,7 @@ See [pipelines/README.md](pipelines/README.md) for what each command does, hardw
 - **SSD** for `source-store/`, `aggregation-store/`, `tmp-store/` (~2 GiB RAM per worker thread)
 - **HDD** for `pmtiles-store/`, `bundle-store/`, `tar-store/` (large sequential output)
 
-Set `MAPTERHORN_DATA_ROOT` (see [`pipelines/env.example`](pipelines/env.example)) so all stores live **outside the git checkout** — no in-repo symlinks. Check with `uv run mapterhorn storage`. Details in [pipelines/README.md](pipelines/README.md) → Hardware.
+Set `MAPTERHORN_DATA_ROOT` in [`pipelines/.env`](pipelines/env.example) (copy from `env.example`; `.env` is gitignored). The pipeline **refuses to run** if data would land inside the git checkout. Check with `uv run mapterhorn storage`. Wipe stores with `uv run mapterhorn clear-storage -y`. Details in [pipelines/README.md](pipelines/README.md) → Hardware.
 
 ## License notes
 

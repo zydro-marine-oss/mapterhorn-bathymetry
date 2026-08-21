@@ -22,6 +22,12 @@ def has_command(cmd):
 
 
 def main():
+    try:
+        utils.require_data_config()
+    except RuntimeError as e:
+        print(e)
+        return 1
+
     ok = True
     ok &= check('gdalwarp', has_command('gdalwarp'))
     ok &= check('gdal_translate', has_command('gdal_translate'))

@@ -46,8 +46,13 @@ def free_gb(path):
 
 
 def main():
-    root = utils.data_root()
+    try:
+        root = utils.data_root()
+    except RuntimeError as e:
+        print(e)
+        raise SystemExit(1)
     print('MAPTERHORN_DATA_ROOT → {}'.format(root))
+    print('git repo → {}'.format(utils.repo_root()))
     print('catalog → {}'.format(utils.catalog_root()))
     print()
     print('{:<20} {:<14} {:>8}  {}'.format('STORE', 'WANT', 'FREE_GB', 'RESOLVES TO'))
@@ -71,8 +76,7 @@ def main():
         os.environ.get('MAPTERHORN_MAX_TMP_SOURCE_SIZE', '100'),
         os.environ.get('MAPTERHORN_NUM_WORKERS', '32'),
     ))
-    print('Tip: put all stores outside git with MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn')
-    print('     and optionally override HDD stores via MAPTERHORN_PMTILES_STORE etc.')
+    print('Stores must stay outside the git repo (enforced). Clear with: mapterhorn clear-storage -y')
 
 
 if __name__ == '__main__':

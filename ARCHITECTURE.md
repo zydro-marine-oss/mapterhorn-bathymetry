@@ -316,26 +316,18 @@ Rule of thumb: **~2 GiB RAM per worker thread**. Throughput on a large box is on
 Set stores outside git:
 
 ```bash
-# pipelines/.env
-export MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn
-# optional HDD split:
-# export MAPTERHORN_PMTILES_STORE=/mnt/hdd/mapterhorn/pmtiles-store
-# export MAPTERHORN_BUNDLE_STORE=/mnt/hdd/mapterhorn/bundle-store
-# export MAPTERHORN_TAR_STORE=/mnt/hdd/mapterhorn/tar-store
+# pipelines/.env  (gitignored; copy from env.example)
+MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn
 ```
 
-Useful knobs:
+`MAPTERHORN_DATA_ROOT` is **required**. If it is missing or points inside the git repo, every store access raises and the CLI exits. Optional per-store overrides (`MAPTERHORN_PMTILES_STORE`, …) are also rejected if they resolve inside the repo.
 
-| Variable | Default | Role |
-|----------|---------|------|
-| `MAPTERHORN_DATA_ROOT` | cwd | Base for all stores |
-| `MAPTERHORN_*_STORE` | under root | Override one store’s path |
-| `MAPTERHORN_NUM_WORKERS` | 32 | Worker process count |
-| `MAPTERHORN_MAX_TMP_SOURCE_SIZE` | 100 | Max GiB in `tmp-store/source` |
-| `MAPTERHORN_SOFTLINK_SOURCE` | 0 | `1` = symlink into tmp instead of copy |
-| `MAPTERHORN_MIN_FREE_GB` | 50 | Preflight disk floor |
+Wipe all stores under the data root:
 
-Check layout with `uv run mapterhorn storage` and readiness with `uv run mapterhorn preflight`.
+```bash
+uv run mapterhorn clear-storage -y
+uv run mapterhorn clear-storage --stores tmp-store aggregation-store -y
+```
 
 ---
 

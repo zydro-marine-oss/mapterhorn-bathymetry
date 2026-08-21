@@ -10,25 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import utils
+
 PIPELINES_DIR = Path(__file__).resolve().parent
-
-
-def load_dotenv():
-    env_path = PIPELINES_DIR / '.env'
-    if not env_path.is_file():
-        return
-    with open(env_path) as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            if line.startswith('export '):
-                line = line[len('export '):].strip()
-            key, _, val = line.partition('=')
-            key = key.strip()
-            val = val.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = val
 
 
 def run_script(script, argv=None, env=None):
@@ -71,6 +55,7 @@ Also:
      mapterhorn shoreline
      mapterhorn manage load NAME -y
      mapterhorn manage clear NAME -y
+     mapterhorn clear-storage -y    # wipe all stores under DATA_ROOT
      mapterhorn upload
 ''')
     return 0
@@ -78,6 +63,17 @@ Also:
 
 def cmd_storage(_args):
     return run_script('storage_layout.py')
+
+
+def cmd_clear_storage(args):
+    argv = []
+    if args.stores:
+        argv.extend(['--stores'] + list(args.stores))
+    if args.yes:
+        argv.append('-y')
+    if args.dry_run:
+        argv.append('--dry-run')
+    return run_script('clear_storage.py', argv)
 
 
 def cmd_preflight(_args):
@@ -209,6 +205,12 @@ def build_parser():
     p = sub.add_parser('storage', help='show which disk each store is on')
     p.set_defaults(func=cmd_storage)
 
+    p = sub.add_parser('clear-storage', help='delete store dirs under MAPTERHORN_DATA_ROOT')
+    p.add_argument('--stores', nargs='*', help='limit to these store names')
+    p.add_argument('--yes', '-y', action='store_true')
+    p.add_argument('--dry-run', action='store_true')
+    p.set_defaults(func=cmd_clear_storage)
+
     p = sub.add_parser('preflight', help='dependency / data readiness checks')
     p.set_defaults(func=cmd_preflight)
 
@@ -265,32 +267,41 @@ def build_parser():
 
 
 def main(argv=None):
-    load_dotenv()
+    utils.load_dotenv()
     os.chdir(PIPELINES_DIR)
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     if not argv:
-        return cmd_help(None)
+        raise SystemExit(cmd_help(None) or 0)
 
     args = parser.parse_args(argv)
     if not getattr(args, 'command', None):
-        return cmd_help(None)
+        raise SystemExit(cmd_help(None) or 0)
+
+    # Every pipeline command needs an external DATA_ROOT (except help).
+    if args.command not in ('help',):
+        try:
+            utils.require_data_config()
+        except RuntimeError as e:
+            print(e, file=sys.stderr)
+            raise SystemExit(1)
+
     if args.command == 'manage':
         argv_rest = list(args.manage_argv or [])
         if argv_rest and argv_rest[0] == '--':
             argv_rest = argv_rest[1:]
         args.manage_argv = argv_rest
         if not args.manage_argv:
-            return run_script('source_manage.py', ['--help'])
+            raise SystemExit(run_script('source_manage.py', ['--help']) or 0)
     if args.command == 'jobs':
         argv_rest = list(args.jobs_argv or [])
         if argv_rest and argv_rest[0] == '--':
             argv_rest = argv_rest[1:]
         args.jobs_argv = argv_rest
         if not args.jobs_argv:
-            return run_script('job_runner.py', ['--help'])
-    return args.func(args) or 0
+            raise SystemExit(run_script('job_runner.py', ['--help']) or 0)
+    raise SystemExit(args.func(args) or 0)
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()

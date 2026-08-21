@@ -27,8 +27,9 @@ Y_MAX_3857 = X_MAX_3857
 _SOURCE_DOMAIN_CACHE = {}
 
 # ---------------------------------------------------------------------------
-# Data stores live under MAPTERHORN_DATA_ROOT (default: pipelines/ cwd).
+# Data stores live under MAPTERHORN_DATA_ROOT (required; from pipelines/.env).
 # Optional per-store overrides keep SSD/HDD split without symlinks in git.
+# Stores must never resolve inside the git checkout.
 # ---------------------------------------------------------------------------
 STORE_NAMES = (
     'source-store',
@@ -57,17 +58,75 @@ _STORE_ENV_VARS = {
 }
 
 _PIPELINES_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _PIPELINES_DIR.parent
+_ENV_LOADED = False
+
+
+def repo_root():
+    return str(_REPO_ROOT.resolve())
+
+
+def pipelines_dir():
+    return str(_PIPELINES_DIR.resolve())
+
+
+def load_dotenv(force=False):
+    # Load pipelines/.env into os.environ (does not override existing vars).
+    global _ENV_LOADED
+    if _ENV_LOADED and not force:
+        return
+    env_path = _PIPELINES_DIR / '.env'
+    if env_path.is_file():
+        with open(env_path) as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                if line.startswith('export '):
+                    line = line[len('export '):].strip()
+                key, _, val = line.partition('=')
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+    _ENV_LOADED = True
+
+
+def _path_is_inside(path, parent):
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def require_data_config():
+    # Refuse to run with stores under the git checkout.
+    load_dotenv()
+    raw = os.environ.get('MAPTERHORN_DATA_ROOT')
+    if raw is None or str(raw).strip() == '':
+        raise RuntimeError(
+            'MAPTERHORN_DATA_ROOT is not set.\n'
+            '  1) cp pipelines/env.example pipelines/.env\n'
+            '  2) edit .env and set MAPTERHORN_DATA_ROOT to a path OUTSIDE this git repo\n'
+            '  3) re-run (mapterhorn loads .env automatically)'
+        )
+    resolved = Path(raw).expanduser().resolve()
+    if _path_is_inside(resolved, _REPO_ROOT):
+        raise RuntimeError(
+            'MAPTERHORN_DATA_ROOT={!r} is inside the git repo ({}).\n'
+            'Point it at an external path (SSD/HDD), e.g. /mnt/ssd/mapterhorn'.format(
+                str(resolved), repo_root())
+        )
+    return str(resolved)
 
 
 def data_root():
-    root = os.environ.get('MAPTERHORN_DATA_ROOT')
-    if root:
-        return str(Path(root).expanduser().resolve())
-    # Default: current working directory (normally pipelines/)
-    return os.path.abspath(os.getcwd())
+    return require_data_config()
 
 
 def catalog_root():
+    load_dotenv()
     override = os.environ.get('MAPTERHORN_CATALOG_ROOT')
     if override:
         return str(Path(override).expanduser().resolve())
@@ -77,12 +136,19 @@ def catalog_root():
 def store_dir(name, create=True):
     if name not in _STORE_ENV_VARS:
         raise ValueError('unknown store {!r}'.format(name))
+    require_data_config()
     env_key = _STORE_ENV_VARS[name]
     override = os.environ.get(env_key)
     if override:
         path = str(Path(override).expanduser().resolve())
     else:
         path = os.path.join(data_root(), name)
+    if _path_is_inside(path, _REPO_ROOT):
+        raise RuntimeError(
+            'store {!r} resolves to {!r} inside the git repo. '
+            'Fix MAPTERHORN_DATA_ROOT or {} in pipelines/.env'.format(
+                name, path, env_key)
+        )
     if create:
         Path(path).mkdir(parents=True, exist_ok=True)
     return path

@@ -14,6 +14,8 @@ There are **two phases**. Several recipes overlap; you only need the ones in thi
 
 ```bash
 uv sync
+cp env.example .env                # REQUIRED (gitignored)
+# set MAPTERHORN_DATA_ROOT to a path outside this repo
 uv run mapterhorn storage
 uv run mapterhorn jobs autodownload -y   # phase 1: SQLite queue + process workers
 uv run mapterhorn covering               # phase 2: plan tiles
@@ -35,7 +37,8 @@ Aggregation progress is written to `meta-store/run-status.json` and `meta-store/
 
 | Command | What it actually does |
 |---|---|
-| `mapterhorn storage` | Print which disk each store directory is on. |
+| `mapterhorn storage` | Print which disk each store directory is on. Requires `pipelines/.env` with `MAPTERHORN_DATA_ROOT` outside git. |
+| `mapterhorn clear-storage -y` | Delete store directories under `MAPTERHORN_DATA_ROOT` (optional `--stores name…`). |
 | `mapterhorn jobs autodownload -y` | **The source command.** Enqueue download/prep into SQLite, then run process workers until idle. Live spinner from DB counts. Defaults: 16 download + 4 prep workers. Skips `READY`. Ctrl+C leaves pending jobs for `mapterhorn jobs serve`. |
 | `mapterhorn jobs status [--watch]` | Durable job counts; `--failed` / `--running` for details. |
 | `mapterhorn jobs serve` | Resume workers on pending/reclaimed jobs. |
@@ -284,22 +287,22 @@ Do **not** symlink store folders into `pipelines/` (that fights git). Point all 
 ```bash
 cp env.example .env
 # edit .env:
-#   MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn
+#   MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn   # REQUIRED, outside git
 #   MAPTERHORN_PMTILES_STORE=/mnt/hdd/mapterhorn/pmtiles-store   # optional
 #   MAPTERHORN_BUNDLE_STORE=/mnt/hdd/mapterhorn/bundle-store
 #   MAPTERHORN_TAR_STORE=/mnt/hdd/mapterhorn/tar-store
 
-# mapterhorn loads pipelines/.env automatically
+# mapterhorn / utils load pipelines/.env automatically
 uv run mapterhorn storage
 ```
 
 | Variable | Purpose |
 |----------|---------|
-| `MAPTERHORN_DATA_ROOT` | Base dir for every store (`$ROOT/source-store`, `$ROOT/tmp-store`, …) |
+| `MAPTERHORN_DATA_ROOT` | **Required.** Base dir for every store. Must be outside the git repo or the pipeline exits. |
 | `MAPTERHORN_PMTILES_STORE` etc. | Optional absolute override for one store (SSD/HDD split) |
 | `MAPTERHORN_CATALOG_ROOT` | Rarely needed; defaults to `../source-catalog` next to `pipelines/` |
 
-Store folders under `pipelines/` are **gitignored**. Prefer an empty `pipelines/` working tree plus `MAPTERHORN_DATA_ROOT` on your disks.
+`.env` is gitignored. The pipeline will not create stores under the checkout: missing or in-repo `MAPTERHORN_DATA_ROOT` is a hard error. Wipe data with `uv run mapterhorn clear-storage -y`.
 
 ### What goes on SSD vs HDD
 
@@ -357,7 +360,7 @@ On a constrained SSD you can still put individual huge sources on HDD via a per-
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `MAPTERHORN_DATA_ROOT` | cwd (`pipelines/`) | Where stores live (set this to leave git) |
+| `MAPTERHORN_DATA_ROOT` | (required) | Where stores live — must be outside git; set in `pipelines/.env` |
 | `MAPTERHORN_NUM_WORKERS` | 32 | Aggregation/downsampling worker processes |
 | `MAPTERHORN_MAX_TMP_SOURCE_SIZE` | 100 | Max GiB of `tmp-store/source` before pruning |
 | `MAPTERHORN_SOFTLINK_SOURCE` | 0 | `1` = symlink sources into tmp instead of copying |

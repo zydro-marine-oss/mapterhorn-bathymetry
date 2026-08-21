@@ -43,15 +43,15 @@ Four stages run in order. Each stage reads from named **stores** on disk and wri
 
 Typical operator path (from `pipelines/`):
 
-1. `just jobs autodownload -y` — enqueue download/prep into SQLite, run process workers (+ shoreline)
-2. `just covering` — plan work
-3. `just downloader` (one terminal) + `just aggregate` (another)
-4. `just downsample`
-5. `just bundle VERSION=1`
+1. `uv run mapterhorn jobs autodownload -y` — enqueue download/prep into SQLite, run process workers (+ shoreline)
+2. `uv run mapterhorn covering` — plan work
+3. `uv run mapterhorn downloader` (one terminal) + `uv run mapterhorn aggregate` (another)
+4. `uv run mapterhorn downsample`
+5. `uv run mapterhorn bundle --version 1`
 
-`just all` runs covering through bundle. It does **not** download sources.
+`uv run mapterhorn all --version 1` runs covering through bundle. It does **not** download sources.
 
-See [Source jobs (SQLite)](#source-jobs-sqlite) for resume/retry details. `just manage autodownload` is an alias that delegates to the same runner.
+See [Source jobs (SQLite)](#source-jobs-sqlite) for resume/retry details. `mapterhorn manage autodownload` is an alias that delegates to the same runner.
 
 ---
 
@@ -60,7 +60,7 @@ See [Source jobs (SQLite)](#source-jobs-sqlite) for resume/retry details. `just 
 | Path | Role |
 |------|------|
 | `source-catalog/` | One folder per elevation/bathymetry product: download list, prep recipe, metadata, license |
-| `pipelines/` | All processing code and `just` recipes |
+| `pipelines/` | All processing code; run via `uv run mapterhorn` |
 | `website/` | Static site (viewer, coverage, attribution) when present |
 | Data stores | Live **outside** the git tree under `MAPTERHORN_DATA_ROOT` (see [Hardware and stores](#hardware-and-stores)) |
 
@@ -95,7 +95,7 @@ Each product under `source-catalog/{name}/` has:
 | File | Purpose |
 |------|---------|
 | `file_list.txt` | One download URL per line |
-| `Justfile` | Ordered prep steps (download, unzip, CRS fixes, bounds, …) |
+| `Justfile` | Ordered prep recipe (parsed by Python; the `just` tool is not required) |
 | `metadata.json` | Name, license, producer, resolution, optional **`domain`** |
 | `LICENSE.pdf` | License snapshot shipped with the source tarball |
 
@@ -141,21 +141,21 @@ In `source-store/{source}/`:
 
 ### Source jobs (SQLite)
 
-Source work is tracked in **`meta-store/jobs.sqlite`**, not only in memory. `just jobs autodownload -y` (or `just manage autodownload -y`) does two things:
+Source work is tracked in **`meta-store/jobs.sqlite`**, not only in memory. `uv run mapterhorn jobs autodownload -y` (or `manage autodownload -y`) does two things:
 
 1. **Enqueue** — plan download/prep jobs (skip sources already `READY`; prep-only if `DOWNLOAD_COMPLETE` already exists; optional shoreline job).
 2. **Serve** — spawn separate **download** and **prep** OS processes that claim jobs from the DB, heartbeat while running, and write markers when done.
 
 | Command | Role |
 |---------|------|
-| `just jobs autodownload -y` | Enqueue + serve until the queue is idle |
-| `just jobs enqueue autodownload -y` | Plan only |
-| `just jobs serve` | Resume workers on whatever is still pending |
-| `just jobs status [--watch]` | Durable counts: pending / running / succeeded / failed |
-| `just jobs retry` | Requeue failed jobs |
-| `just jobs reclaim` | Turn stale `running` rows (dead workers) back into `pending` |
+| `mapterhorn jobs autodownload -y` | Enqueue + serve until the queue is idle |
+| `mapterhorn jobs enqueue autodownload -y` | Plan only |
+| `mapterhorn jobs serve` | Resume workers on whatever is still pending |
+| `mapterhorn jobs status [--watch]` | Durable counts: pending / running / succeeded / failed |
+| `mapterhorn jobs retry` | Requeue failed jobs |
+| `mapterhorn jobs reclaim` | Turn stale `running` rows (dead workers) back into `pending` |
 
-Download success still writes `DOWNLOAD_COMPLETE` and enqueues a `source_prep` job. Prep success writes `READY`. Kill the runner mid-flight and run `just jobs serve` again — finished sources are not redone.
+Download success still writes `DOWNLOAD_COMPLETE` and enqueues a `source_prep` job. Prep success writes `READY`. Kill the runner mid-flight and run `mapterhorn jobs serve` again — finished sources are not redone.
 
 Defaults: 16 download workers, 4 prep workers. Prep workers set `MAPTERHORN_PREP_POOL_SIZE=1` so unzip/polygonize do not each fork a huge nested process pool. Aggregation covering still uses file-based `.todo` / `.done` / `.failed` (not SQLite yet).
 
@@ -179,7 +179,7 @@ OSM coastlines are intentionally avoided (share-alike). S2Coast is CC BY 4.0.
 
 Covering answers: *which pieces of Earth need tiles, from which source files, at what resolution?* It writes job CSVs; it does not warp imagery yet.
 
-`just covering` runs:
+`uv run mapterhorn covering` runs:
 
 1. **Aggregation covering** (`aggregation_covering.py`)
 2. **Downsampling covering** (`downsampling_covering.py`)
@@ -220,7 +220,7 @@ Aggregation turns planned CSVs into **single-zoom PMTiles** at each region’s l
 
 ### Downloader (staging)
 
-Aggregation workers need fast random access to many GeoTIFFs. The **downloader** (`just downloader`) runs as a long-lived process:
+Aggregation workers need fast random access to many GeoTIFFs. The **downloader** (`mapterhorn downloader`) runs as a long-lived process:
 
 1. Aggregation drops a CSV into `tmp-store/queue/`.
 2. The downloader copies (or optionally symlinks) listed files from `source-store` into `tmp-store/source/`.
@@ -335,14 +335,14 @@ Useful knobs:
 | `MAPTERHORN_SOFTLINK_SOURCE` | 0 | `1` = symlink into tmp instead of copy |
 | `MAPTERHORN_MIN_FREE_GB` | 50 | Preflight disk floor |
 
-Check layout with `just storage` and readiness with `just preflight`.
+Check layout with `uv run mapterhorn storage` and readiness with `uv run mapterhorn preflight`.
 
 ---
 
 ## Failure, status, and incremental rebuilds
 
-- Progress and heartbeats: `meta-store/run-status.json` and logs (`just status`).
-- Failed jobs become `*.csv.failed` without stopping the whole pool; `just retry-failed` turns them back into `.todo`.
+- Progress and heartbeats: `meta-store/run-status.json` and logs (`mapterhorn status`).
+- Failed jobs become `*.csv.failed` without stopping the whole pool; `mapterhorn retry-failed` turns them back into `.todo`.
 - Re-running covering with updated sources marks only **dirty** aggregation/downsampling items, so adding or updating a DEM does not force a full-planet rebuild.
 
 ---

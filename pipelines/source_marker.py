@@ -4,7 +4,7 @@
 # have been used). Removed when a download starts. Unzip/convert may still
 # be running.
 #
-# READY: catalog Justfile finished (unzip, cog, bounds, polygonize, tarball).
+# READY: catalog prep finished (unzip, cog, bounds, polygonize, tarball).
 # Written only at the end. Covering and the downloader require this file.
 import os
 
@@ -95,7 +95,7 @@ def require_download_complete(source):
         return
     raise RuntimeError(
         'source {} is not fully downloaded (missing {}). '
-        'Run: just manage autodownload {}'.format(source, DOWNLOAD_MARKER, source)
+        'Run: mapterhorn jobs autodownload {}'.format(source, DOWNLOAD_MARKER, source)
     )
 
 
@@ -104,7 +104,7 @@ def require_ready(source):
         return
     raise RuntimeError(
         'source {} is not READY (download/extract still in progress). '
-        'Run: just manage autodownload {}'.format(source, source)
+        'Run: mapterhorn jobs autodownload {}'.format(source, source)
     )
 
 

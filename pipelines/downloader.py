@@ -97,7 +97,7 @@ def main():
             if incomplete:
                 raise RuntimeError(
                     'refusing to stage source(s) that are not READY: {}. '
-                    'Run: just manage autodownload {}'.format(
+                    'Run: mapterhorn jobs autodownload {}'.format(
                         ', '.join(sorted(incomplete)),
                         ' '.join(sorted(incomplete)),
                     )

@@ -211,15 +211,19 @@ def cmd_clear(args):
     return 0
 
 
-def run_source_justfile(source, dry_run=False):
-    catalog_just = '{}/{}/Justfile'.format(CATALOG_ROOT, source)
-    if not os.path.isfile(catalog_just):
-        raise FileNotFoundError('missing Justfile for source {}'.format(source))
-    cmd = ['just', '{}/{}/'.format(CATALOG_ROOT, source)]
-    print('running: {}'.format(' '.join(cmd)))
+def run_source_pipeline(source, dry_run=False, force=False, on_line=None):
+    # Download + prep via Python handlers (catalog Justfile is a recipe list only).
+    from jobs import handlers
+    def _print(msg):
+        if on_line:
+            on_line(msg)
+        else:
+            print(msg, flush=True)
     if dry_run:
+        _print('dry-run: would download+prep {}'.format(source))
         return
-    subprocess.check_call(cmd)
+    handlers.run_source_download(source, force=force, on_line=_print)
+    handlers.run_source_prep(source, force=force, on_line=_print)
 
 
 def cmd_load(args):
@@ -248,9 +252,7 @@ def cmd_load(args):
             source_marker.clear_download_marker(source)
             source_marker.clear_ready_marker(source)
         print('loading {}...'.format(source))
-        run_source_justfile(source, dry_run=args.dry_run)
-        if not args.dry_run:
-            source_marker.mark_ready(source)
+        run_source_pipeline(source, dry_run=args.dry_run, force=args.force)
         log.info('loaded source', source=source)
     return 0
 
@@ -268,7 +270,7 @@ def cmd_reload(args):
 
     print('Will reload {} source(s): {}'.format(len(sources), ', '.join(sources)))
     print('  1) clear source-store (+ derived unless --keep-derived)')
-    print('  2) run catalog Justfile (download + prep)')
+    print('  2) download + prep via catalog recipe')
     if not args.dry_run and not confirm('Proceed?', args.yes):
         print('aborted')
         return 1
@@ -279,9 +281,7 @@ def cmd_reload(args):
             continue
         print('reloading {}...'.format(source))
         clear_paths(paths_for_source(source, derived=not args.keep_derived), dry_run=args.dry_run)
-        run_source_justfile(source, dry_run=args.dry_run)
-        if not args.dry_run:
-            source_marker.mark_ready(source)
+        run_source_pipeline(source, dry_run=args.dry_run, force=True)
         log.info('reloaded source', source=source)
     return 0
 
@@ -377,7 +377,7 @@ def build_parser():
     p_clear.add_argument('--dry-run', action='store_true')
     p_clear.set_defaults(func=cmd_clear)
 
-    p_load = sub.add_parser('load', help='download + prepare sources via catalog Justfile')
+    p_load = sub.add_parser('load', help='download + prepare sources via catalog recipe')
     p_load.add_argument('sources', nargs='*', help='source ids')
     p_load.add_argument('--ocean', action='store_true')
     p_load.add_argument('--land', action='store_true')

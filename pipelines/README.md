@@ -8,68 +8,68 @@ Mapterhorn has four main pipelines that run in sequence: Source, Aggregation, Do
 
 ## Quick start (operator)
 
-All commands below are run from `pipelines/`. Type `just` for the cheat sheet.
+All commands below are run from `pipelines/`. Type `uv run mapterhorn` (or `uv run mapterhorn help`) for the cheat sheet.
 
 There are **two phases**. Several recipes overlap; you only need the ones in this path.
 
 ```bash
 uv sync
-just storage
-just jobs autodownload -y      # phase 1: SQLite queue + process workers
-just covering                  # phase 2: plan tiles
+uv run mapterhorn storage
+uv run mapterhorn jobs autodownload -y   # phase 1: SQLite queue + process workers
+uv run mapterhorn covering               # phase 2: plan tiles
 # terminal A:
-just downloader                # copy rasters into tmp-store as aggregate asks for them
+uv run mapterhorn downloader             # copy rasters into tmp-store as aggregate asks for them
 # terminal B:
-just aggregate
-just downsample
-just bundle VERSION=1
+uv run mapterhorn aggregate
+uv run mapterhorn downsample
+uv run mapterhorn bundle --version 1
 ```
 
-After sources are already on disk, `just all VERSION=1` runs covering through bundle (it starts the downloader in the background). It does **not** download sources.
+After sources are already on disk, `uv run mapterhorn all --version 1` runs covering through bundle (it starts the downloader in the background). It does **not** download sources.
 
-`just status` / `just retry-failed` / `just preflight` are watch/recover tools for aggregation. For source jobs use `just jobs status` / `just jobs retry` / `just jobs reclaim`.
+`mapterhorn status` / `retry-failed` / `preflight` are watch/recover tools for aggregation. For source jobs use `mapterhorn jobs status` / `jobs retry` / `jobs reclaim`.
 
 Aggregation progress is written to `meta-store/run-status.json` and `meta-store/logs/{run_id}.log`. Failed aggregation items become `*.csv.failed` without aborting the whole worker pool (set `MAPTERHORN_ABORT_ON_WORKER_FAILURE=1` for legacy abort-all behavior). Source jobs live in `meta-store/jobs.sqlite`.
 
-### Just commands
+### CLI commands
 
 | Command | What it actually does |
 |---|---|
-| `just storage` | Print which disk each store directory is on. |
-| `just jobs autodownload -y` | **The source command.** Enqueue download/prep into SQLite, then run process workers until idle. Live spinner from DB counts. Defaults: 16 download + 4 prep workers. Skips `READY`. Ctrl+C leaves pending jobs for `just jobs serve`. |
-| `just jobs status [--watch]` | Durable job counts; `--failed` / `--running` for details. |
-| `just jobs serve` | Resume workers on pending/reclaimed jobs. |
-| `just jobs retry` | Requeue failed source jobs. |
-| `just jobs reclaim` | Requeue stale `running` jobs (crashed workers). |
-| `just manage autodownload -y` | Alias that delegates to `just jobs autodownload`. |
-| `just manage list` | Table of catalog vs disk. `DL=yes` = files fetched. `READY=yes` = unzip/prep finished; only then is the source usable. |
-| `just covering` | Read complete sources' `bounds.csv` and write the aggregation/downsampling work queues. |
-| `just downloader` | Long-running loop: copy (or symlink) rasters from `source-store` into `tmp-store` as aggregate requests them. Run in its own terminal. |
-| `just aggregate` | Merge staged rasters into terrain tiles. Needs the downloader running. |
-| `just downsample` | Build lower zoom levels from aggregation output. |
-| `just bundle VERSION=1` | Pack tiles into PMTiles + attribution/download URL files. |
-| `just all VERSION=1` | covering + background downloader + aggregate + downsample + bundle. **Does not download sources.** |
-| `just status` | Print `meta-store/run-status.json` (aggregation progress, ETA, failures). |
-| `just retry-failed` | Turn aggregation `*.csv.failed` back into `*.todo`. |
-| `just preflight` | Check GDAL/wget/disk/shoreline/at least one complete land source. |
-| `just upload` | Push finished PMTiles (after bundle). |
+| `mapterhorn storage` | Print which disk each store directory is on. |
+| `mapterhorn jobs autodownload -y` | **The source command.** Enqueue download/prep into SQLite, then run process workers until idle. Live spinner from DB counts. Defaults: 16 download + 4 prep workers. Skips `READY`. Ctrl+C leaves pending jobs for `mapterhorn jobs serve`. |
+| `mapterhorn jobs status [--watch]` | Durable job counts; `--failed` / `--running` for details. |
+| `mapterhorn jobs serve` | Resume workers on pending/reclaimed jobs. |
+| `mapterhorn jobs retry` | Requeue failed source jobs. |
+| `mapterhorn jobs reclaim` | Requeue stale `running` jobs (crashed workers). |
+| `mapterhorn manage autodownload -y` | Alias that delegates to `jobs autodownload`. |
+| `mapterhorn manage list` | Table of catalog vs disk. `DL=yes` = files fetched. `READY=yes` = unzip/prep finished; only then is the source usable. |
+| `mapterhorn covering` | Read complete sources' `bounds.csv` and write the aggregation/downsampling work queues. |
+| `mapterhorn downloader` | Long-running loop: copy (or symlink) rasters from `source-store` into `tmp-store` as aggregate requests them. Run in its own terminal. |
+| `mapterhorn aggregate` | Merge staged rasters into terrain tiles. Needs the downloader running. |
+| `mapterhorn downsample` | Build lower zoom levels from aggregation output. |
+| `mapterhorn bundle --version 1` | Pack tiles into PMTiles + attribution/download URL files. |
+| `mapterhorn all --version 1` | covering + background downloader + aggregate + downsample + bundle. **Does not download sources.** |
+| `mapterhorn status` | Print `meta-store/run-status.json` (aggregation progress, ETA, failures). |
+| `mapterhorn retry-failed` | Turn aggregation `*.csv.failed` back into `*.todo`. |
+| `mapterhorn preflight` | Check GDAL/wget/disk/shoreline/at least one complete land source. |
+| `mapterhorn upload` | Push finished PMTiles (after bundle). |
 
 Aliases you can ignore unless you need them:
 
 | Command | Same as |
 |---|---|
-| `just shoreline` | Shoreline half of autodownload (`manage load-shoreline`) |
-| `just sources SOURCES='gebco'` | `just manage load gebco` (default `SOURCES` is only `gebco`) |
-| `just manage load NAME` | Run one source's catalog Justfile |
-| `just manage reload NAME -y` | Delete that source, then download it again |
-| `just manage clear NAME -y` | Delete only |
-| `just manage mark-complete NAME` | After a manual FTP drop (UK England, Japan DEM, …) |
+| `mapterhorn shoreline` | Shoreline half of autodownload (`manage load-shoreline`) |
+| `mapterhorn sources gebco -y` | `manage load gebco -y` |
+| `mapterhorn manage load NAME` | Download + prep one named source |
+| `mapterhorn manage reload NAME -y` | Delete that source, then download it again |
+| `mapterhorn manage clear NAME -y` | Delete only |
+| `mapterhorn manage mark-complete NAME` | After a manual FTP drop (UK England, Japan DEM, …) |
 
-`just jobs autodownload gebco -y` / `--ocean` / `--land` / `--dry-run` / `--force` / `-v` / `--download-workers` / `--prep-workers` limit or tune autodownload.
+`mapterhorn jobs autodownload gebco -y` / `--ocean` / `--land` / `--dry-run` / `--force` / `-v` / `--download-workers` / `--prep-workers` limit or tune autodownload.
 
 ### Bathymetry-specific steps
 
-1. Shoreline mask is built by autodownload (or `just shoreline`).
+1. Shoreline mask is built by autodownload (or `mapterhorn shoreline`).
 2. Prepare ocean sources (`gebco`, `emodnet`, `bluetopo`, …) with `"domain": "ocean"` in their `metadata.json`.
 3. Aggregation masks land vs ocean **after** each reproject and **before** the early-exit “fully filled” check, so land DEMs that encode ocean as `0` do not block bathymetry.
 4. Web Mercator bounds are clamped to ±85.051° so polar GEBCO tiles do not explode `bounds.csv`.
@@ -126,7 +126,7 @@ uv run python source_manage.py clear-shoreline --yes
 uv run python source_manage.py load-shoreline --force --yes
 ```
 
-Also available as `just jobs ...` / `just manage ...`. Source download/prep jobs are stored in `meta-store/jobs.sqlite`. Two markers in `source-store/{source}/`: `DOWNLOAD_COMPLETE` after wget finishes, `READY` only after unzip/cog/bounds/tarball finish. Covering and the downloader require `READY`. Clear removes `source-store/{source}` plus polygon/tar/meta unless `--keep-derived`. `manage load` runs the catalog Justfile directly; `jobs autodownload` plans the same steps as durable jobs and overlaps prep with other sources' downloads.
+Also available as `uv run mapterhorn jobs …` / `uv run mapterhorn manage …`. Source download/prep jobs are stored in `meta-store/jobs.sqlite`. Two markers in `source-store/{source}/`: `DOWNLOAD_COMPLETE` after wget finishes, `READY` only after unzip/cog/bounds/tarball finish. Covering and the downloader require `READY`. Clear removes `source-store/{source}` plus polygon/tar/meta unless `--keep-derived`. `manage load` runs download+prep via Python handlers (catalog `Justfile` is only a recipe list); `jobs autodownload` plans the same steps as durable jobs and overlaps prep with other sources' downloads.
 
 
 `source_create_tarball.py`: Required script. Creates a tarball in `tar-store/{source}.tar`. Metadata is stored in `meta-store/tar/{source}.json`. Tarball will be needed in the upload stage.
@@ -267,7 +267,6 @@ We now bundle these files by creating tile pyramids with multiple zoom levels.
 
 - gdal: https://mothergeo-py.readthedocs.io/en/latest/development/how-to/gdal-ubuntu-pkg.html#install-gdal-ogr
 - uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- just: https://github.com/casey/just?tab=readme-ov-file#installation
 - aws cli: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 - wget
 - curl
@@ -290,9 +289,8 @@ cp env.example .env
 #   MAPTERHORN_BUNDLE_STORE=/mnt/hdd/mapterhorn/bundle-store
 #   MAPTERHORN_TAR_STORE=/mnt/hdd/mapterhorn/tar-store
 
-# just loads .env automatically; otherwise:
-source .env   # or export vars in your shell profile
-just storage
+# mapterhorn loads pipelines/.env automatically
+uv run mapterhorn storage
 ```
 
 | Variable | Purpose |
@@ -369,7 +367,7 @@ On a constrained SSD you can still put individual huge sources on HDD via a per-
 ### Check before a long run
 
 ```bash
-just storage     # mount points + free space per store
-just preflight
+uv run mapterhorn storage     # mount points + free space per store
+uv run mapterhorn preflight
 ```
 

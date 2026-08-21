@@ -7,45 +7,45 @@ Public terrain **and** bathymetry tiles for interactive web map visualizations. 
 - **Shoreline masking** — S2Coast-2023 + GSHHG Antarctica decide land vs ocean so land DEMs (often ocean=`0`) do not block bathymetry.
 - **Source `domain`** — `land` (default), `ocean`, `both`, or `mask` in `source-catalog/*/metadata.json`.
 - **Bathymetry catalog** — GEBCO 2026, BathDNN25, EMODnet, NOAA BlueTopo, GMRT, plus helpers for NONNA / AusSeabed / LINZ.
-- **Unattended ops** — `just status`, heartbeats in `meta-store/run-status.json`, `.failed` items with `just retry-failed`, and `just preflight`.
+- **Unattended ops** — `mapterhorn status`, heartbeats in `meta-store/run-status.json`, `.failed` items with `mapterhorn retry-failed`, and `mapterhorn preflight`.
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| [source-catalog/](source-catalog/) | Per-source download lists, metadata, Justfiles |
-| [pipelines/](pipelines/) | Download → aggregate → downsample → bundle |
+| [source-catalog/](source-catalog/) | Per-source download lists, metadata, prep recipes |
+| [pipelines/](pipelines/) | Download → aggregate → downsample → bundle (`uv run mapterhorn`) |
 | [website/](website/) | Static site (viewer, coverage, attribution) |
 
 ## Run the pipeline
 
-From `pipelines/` (`just` with no args prints this cheat sheet):
+From `pipelines/` (`uv run mapterhorn` prints the cheat sheet):
 
 ```bash
 cd pipelines
 uv sync
-just storage                       # confirm data disks
-just jobs autodownload -y          # download + prep sources (SQLite jobs; resumable)
-just covering                      # plan tiles
+uv run mapterhorn storage              # confirm data disks
+uv run mapterhorn jobs autodownload -y # download + prep (SQLite jobs; resumable)
+uv run mapterhorn covering             # plan tiles
 # two terminals:
-just downloader                    # copy rasters into tmp as aggregate needs them
-just aggregate
-just downsample
-just bundle VERSION=1
+uv run mapterhorn downloader           # copy rasters into tmp as aggregate needs them
+uv run mapterhorn aggregate
+uv run mapterhorn downsample
+uv run mapterhorn bundle --version 1
 ```
 
-`just all VERSION=1` is covering through bundle. It does **not** download sources.
+`uv run mapterhorn all --version 1` is covering through bundle. It does **not** download sources.
 
-See [pipelines/README.md](pipelines/README.md) for what each `just` command does, hardware notes, and bathymetry behavior. See [source-catalog/README.md](source-catalog/README.md) for how to add sources.
+See [pipelines/README.md](pipelines/README.md) for what each command does, hardware notes, and bathymetry behavior. See [source-catalog/README.md](source-catalog/README.md) for how to add sources. Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Requirements
 
 - GDAL (`gdalwarp`, `gdal_translate`, `gdal_rasterize`, `ogr2ogr`, …)
-- [uv](https://github.com/astral-sh/uv), [just](https://github.com/casey/just), wget
+- [uv](https://github.com/astral-sh/uv), wget
 - **SSD** for `source-store/`, `aggregation-store/`, `tmp-store/` (~2 GiB RAM per worker thread)
 - **HDD** for `pmtiles-store/`, `bundle-store/`, `tar-store/` (large sequential output)
 
-Set `MAPTERHORN_DATA_ROOT` (see [`pipelines/env.example`](pipelines/env.example)) so all stores live **outside the git checkout** — no in-repo symlinks. Check with `just storage`. Details in [pipelines/README.md](pipelines/README.md) → Hardware.
+Set `MAPTERHORN_DATA_ROOT` (see [`pipelines/env.example`](pipelines/env.example)) so all stores live **outside the git checkout** — no in-repo symlinks. Check with `uv run mapterhorn storage`. Details in [pipelines/README.md](pipelines/README.md) → Hardware.
 
 ## License notes
 

@@ -37,7 +37,14 @@ https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2501-1122/sw
 
 ### `Justfile`
 
-Contains instructions about which scripts to use to download and normalize the source data. Should be run from the `mapterhorn/pipelines` folder.
+Ordered prep recipe (download, unzip, CRS fixes, bounds, …). The pipeline **parses** this file in Python; you do **not** need the `just` tool. Run a source with:
+
+```bash
+cd pipelines
+uv run mapterhorn manage load desachsenanhalt -y
+# or enqueue many sources:
+uv run mapterhorn jobs autodownload -y
+```
 
 Example `desachsenanhalt/Justfile`:
 
@@ -52,8 +59,6 @@ default:
     uv run python source_polygonize.py desachsenanhalt 32
     uv run python source_create_tarball.py desachsenanhalt
 ```
-
-You would run this Justfile from the pipelines folder with `just ../source-catalog/desachsenanhalt/`.
 
 ### `LICENSE.pdf`
 
@@ -105,7 +110,7 @@ Aggregation uses a shoreline mask (S2Coast-2023 + GSHHG Antarctica) so land DEMs
 | `nonna` | CHS NONNA | Canada (file list may need refresh) |
 | `ausseabed` | AusSeabed | Australia (add URLs from catalogue) |
 | `linzbathy` | LINZ | New Zealand (add URLs from LINZ Data Service) |
-| `s2coast` | Shoreline mask | Not elevation; run `just shoreline` from `pipelines/` |
+| `s2coast` | Shoreline mask | Not elevation; run `uv run mapterhorn shoreline` from `pipelines/` |
 
 ## Adding a Source
 

@@ -38,7 +38,7 @@ def polygonize_source(source, processes):
     argument_tuples = []
     for filename in filenames:
         argument_tuples.append((source, filename))
-    with Pool(processes) as pool:
+    with Pool(processes=utils.prep_pool_size(processes)) as pool:
         pool.starmap(polygonize_tif, argument_tuples, chunksize=1)
 
 def merge_source(source):

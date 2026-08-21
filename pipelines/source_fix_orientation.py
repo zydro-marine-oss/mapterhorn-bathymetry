@@ -30,7 +30,7 @@ def main():
             continue
         argument_tuples.append((filepath,))
     
-    with Pool() as pool:
+    with Pool(processes=utils.prep_pool_size()) as pool:
         pool.starmap(fix_orientation, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

@@ -60,7 +60,8 @@ def main():
     filepaths = [(filepath,) for filepath in sorted(filepaths)]
 
     print(f'num files: {len(filepaths)}')
-    with Pool() as pool:
+    pool_size = utils.prep_pool_size()
+    with Pool(processes=pool_size) as pool:
         pool.starmap(to_cog, filepaths, chunksize=1)
             
 if __name__ == '__main__':

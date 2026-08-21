@@ -35,6 +35,15 @@ sources:
 manage *ARGS:
     uv run python source_manage.py {{ARGS}}
 
+# Durable SQLite source jobs (download/prep process workers)
+#   just jobs autodownload -y
+#   just jobs status --watch
+#   just jobs serve
+#   just jobs retry
+#   just jobs reclaim
+jobs *ARGS:
+    uv run python job_runner.py {{ARGS}}
+
 # Show which disk each store directory resolves to
 storage:
     uv run python storage_layout.py
@@ -88,9 +97,10 @@ upload:
 default:
     @echo "Run from pipelines/. Two phases: get data, then build tiles."
     @echo ""
-    @echo "1) Get data (once, resumable):"
+    @echo "1) Get data (once, resumable, SQLite job queue):"
     @echo "     just storage"
-    @echo "     just manage autodownload -y      # 32 parallel downloads; prep overlaps"
+    @echo "     just jobs autodownload -y        # enqueue + process workers"
+    @echo "     just jobs status --watch         # durable pending/running/failed"
     @echo "     just manage list                 # READY=yes means that source is safe to use"
     @echo ""
     @echo "2) Build tiles:"
@@ -105,11 +115,13 @@ default:
     @echo ""
     @echo "Watch / recover:"
     @echo "     just status          just retry-failed          just preflight"
+    @echo "     just jobs retry      just jobs reclaim"
     @echo ""
     @echo "Same job, different names (usually skip these):"
-    @echo "     just shoreline              = shoreline step of autodownload"
-    @echo "     just sources SOURCES='x y'  = just manage load x y"
-    @echo "     just manage load NAME       = autodownload one named source"
-    @echo "     just manage reload NAME -y  = delete that source, then download again"
-    @echo "     just manage clear NAME -y   = delete only"
-    @echo "     just upload                 = push finished PMTiles (after bundle)"
+    @echo "     just manage autodownload -y     = just jobs autodownload -y"
+    @echo "     just shoreline                  = shoreline step of autodownload"
+    @echo "     just sources SOURCES='x y'      = just manage load x y"
+    @echo "     just manage load NAME           = prep one named source via Justfile"
+    @echo "     just manage reload NAME -y      = delete that source, then download again"
+    @echo "     just manage clear NAME -y       = delete only"
+    @echo "     just upload                     = push finished PMTiles (after bundle)"

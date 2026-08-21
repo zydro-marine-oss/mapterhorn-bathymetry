@@ -54,7 +54,7 @@ def main():
     if dry_run or nodata is None:
         print('This is a dry run. Exit now...')
         return
-    with Pool() as pool:
+    with Pool(processes=utils.prep_pool_size()) as pool:
         pool.starmap(set_nodata, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

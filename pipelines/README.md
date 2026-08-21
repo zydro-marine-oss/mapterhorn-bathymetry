@@ -15,7 +15,7 @@ There are **two phases**. Several recipes overlap; you only need the ones in thi
 ```bash
 uv sync
 just storage
-just manage autodownload -y    # phase 1: 32 parallel downloads, prep overlaps
+just jobs autodownload -y      # phase 1: SQLite queue + process workers
 just covering                  # phase 2: plan tiles
 # terminal A:
 just downloader                # copy rasters into tmp-store as aggregate asks for them
@@ -27,16 +27,21 @@ just bundle VERSION=1
 
 After sources are already on disk, `just all VERSION=1` runs covering through bundle (it starts the downloader in the background). It does **not** download sources.
 
-`just status` / `just retry-failed` / `just preflight` are watch/recover tools, not extra stages.
+`just status` / `just retry-failed` / `just preflight` are watch/recover tools for aggregation. For source jobs use `just jobs status` / `just jobs retry` / `just jobs reclaim`.
 
-Progress is written to `meta-store/run-status.json` and `meta-store/logs/{run_id}.log`. Failed items become `*.csv.failed` without aborting the whole worker pool (set `MAPTERHORN_ABORT_ON_WORKER_FAILURE=1` for legacy abort-all behavior).
+Aggregation progress is written to `meta-store/run-status.json` and `meta-store/logs/{run_id}.log`. Failed aggregation items become `*.csv.failed` without aborting the whole worker pool (set `MAPTERHORN_ABORT_ON_WORKER_FAILURE=1` for legacy abort-all behavior). Source jobs live in `meta-store/jobs.sqlite`.
 
 ### Just commands
 
 | Command | What it actually does |
 |---|---|
 | `just storage` | Print which disk each store directory is on. |
-| `just manage autodownload -y` | **The source command.** Live spinner: `x/y done · succeeded · failed · downloading · preparing · queued`. Latest job steps sit to the right of that line; pass `-v` to print every step. Up to 32 wget workers (`--jobs`) and 8 unzip/bounds workers (`--prep-jobs`). Skips `READY`. |
+| `just jobs autodownload -y` | **The source command.** Enqueue download/prep into SQLite, then run process workers until idle. Live spinner from DB counts. Defaults: 16 download + 4 prep workers. Skips `READY`. Ctrl+C leaves pending jobs for `just jobs serve`. |
+| `just jobs status [--watch]` | Durable job counts; `--failed` / `--running` for details. |
+| `just jobs serve` | Resume workers on pending/reclaimed jobs. |
+| `just jobs retry` | Requeue failed source jobs. |
+| `just jobs reclaim` | Requeue stale `running` jobs (crashed workers). |
+| `just manage autodownload -y` | Alias that delegates to `just jobs autodownload`. |
 | `just manage list` | Table of catalog vs disk. `DL=yes` = files fetched. `READY=yes` = unzip/prep finished; only then is the source usable. |
 | `just covering` | Read complete sources' `bounds.csv` and write the aggregation/downsampling work queues. |
 | `just downloader` | Long-running loop: copy (or symlink) rasters from `source-store` into `tmp-store` as aggregate requests them. Run in its own terminal. |
@@ -44,8 +49,8 @@ Progress is written to `meta-store/run-status.json` and `meta-store/logs/{run_id
 | `just downsample` | Build lower zoom levels from aggregation output. |
 | `just bundle VERSION=1` | Pack tiles into PMTiles + attribution/download URL files. |
 | `just all VERSION=1` | covering + background downloader + aggregate + downsample + bundle. **Does not download sources.** |
-| `just status` | Print `meta-store/run-status.json` (progress, ETA, failures). |
-| `just retry-failed` | Turn `*.csv.failed` back into `*.todo`. |
+| `just status` | Print `meta-store/run-status.json` (aggregation progress, ETA, failures). |
+| `just retry-failed` | Turn aggregation `*.csv.failed` back into `*.todo`. |
 | `just preflight` | Check GDAL/wget/disk/shoreline/at least one complete land source. |
 | `just upload` | Push finished PMTiles (after bundle). |
 
@@ -55,12 +60,12 @@ Aliases you can ignore unless you need them:
 |---|---|
 | `just shoreline` | Shoreline half of autodownload (`manage load-shoreline`) |
 | `just sources SOURCES='gebco'` | `just manage load gebco` (default `SOURCES` is only `gebco`) |
-| `just manage load NAME` | Autodownload one named source |
+| `just manage load NAME` | Run one source's catalog Justfile |
 | `just manage reload NAME -y` | Delete that source, then download it again |
 | `just manage clear NAME -y` | Delete only |
 | `just manage mark-complete NAME` | After a manual FTP drop (UK England, Japan DEM, …) |
 
-`just manage autodownload gebco -y` / `--ocean` / `--land` / `--dry-run` / `--force` / `-v` limit, re-do, or verbose-log autodownload.
+`just jobs autodownload gebco -y` / `--ocean` / `--land` / `--dry-run` / `--force` / `-v` / `--download-workers` / `--prep-workers` limit or tune autodownload.
 
 ### Bathymetry-specific steps
 
@@ -109,18 +114,19 @@ The source pipeline has multiple parts that are needed to bring source files int
 
 ```bash
 uv run python source_manage.py list
-uv run python source_manage.py autodownload --yes          # all sources; skip complete; resume partial
-uv run python source_manage.py autodownload gebco --yes
-uv run python source_manage.py mark-complete ukengland     # after a manual FTP drop
+uv run python job_runner.py autodownload --yes          # enqueue + process workers; skip READY
+uv run python job_runner.py status --watch
+uv run python job_runner.py retry
+uv run python source_manage.py mark-complete ukengland  # after a manual FTP drop
 uv run python source_manage.py clear gebco --yes
-uv run python source_manage.py load gebco --yes            # skips already-complete sources
-uv run python source_manage.py reload gebco --yes          # clear then load
+uv run python source_manage.py load gebco --yes         # catalog Justfile for one source
+uv run python source_manage.py reload gebco --yes       # clear then load
 uv run python source_manage.py reload --ocean --yes
 uv run python source_manage.py clear-shoreline --yes
 uv run python source_manage.py load-shoreline --force --yes
 ```
 
-Also available as `just manage ...`. Two markers in `source-store/{source}/`: `DOWNLOAD_COMPLETE` after wget finishes, `READY` only after unzip/cog/bounds/tarball finish. Covering and the downloader require `READY`, so a source that is still extracting is never aggregated. Clear removes `source-store/{source}` plus polygon/tar/meta unless `--keep-derived`. Load runs the catalog Justfile; autodownload runs the same steps but overlaps unzip with other sources' downloads.
+Also available as `just jobs ...` / `just manage ...`. Source download/prep jobs are stored in `meta-store/jobs.sqlite`. Two markers in `source-store/{source}/`: `DOWNLOAD_COMPLETE` after wget finishes, `READY` only after unzip/cog/bounds/tarball finish. Covering and the downloader require `READY`. Clear removes `source-store/{source}` plus polygon/tar/meta unless `--keep-derived`. `manage load` runs the catalog Justfile directly; `jobs autodownload` plans the same steps as durable jobs and overlaps prep with other sources' downloads.
 
 
 `source_create_tarball.py`: Required script. Creates a tarball in `tar-store/{source}.tar`. Metadata is stored in `meta-store/tar/{source}.json`. Tarball will be needed in the upload stage.
@@ -358,6 +364,7 @@ On a constrained SSD you can still put individual huge sources on HDD via a per-
 | `MAPTERHORN_MAX_TMP_SOURCE_SIZE` | 100 | Max GiB of `tmp-store/source` before pruning |
 | `MAPTERHORN_SOFTLINK_SOURCE` | 0 | `1` = symlink sources into tmp instead of copying |
 | `MAPTERHORN_MIN_FREE_GB` | 50 | Preflight minimum free space |
+| `MAPTERHORN_PREP_POOL_SIZE` | unset (CPU count) | Cap nested `Pool` size in unzip/cog/polygonize; job workers set `1` |
 
 ### Check before a long run
 

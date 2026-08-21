@@ -25,7 +25,7 @@ From `pipelines/` (`just` with no args prints this cheat sheet):
 cd pipelines
 uv sync
 just storage                       # confirm data disks
-just manage autodownload -y        # download + prep sources (resumable; skip complete)
+just jobs autodownload -y          # download + prep sources (SQLite jobs; resumable)
 just covering                      # plan tiles
 # two terminals:
 just downloader                    # copy rasters into tmp as aggregate needs them

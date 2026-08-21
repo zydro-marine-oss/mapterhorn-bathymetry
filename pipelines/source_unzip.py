@@ -66,7 +66,8 @@ def translate_images(filepath, source, suffix):
 
     if not argument_tuples:
         return
-    with Pool() as pool:
+    pool_size = utils.prep_pool_size()
+    with Pool(processes=pool_size) as pool:
         pool.starmap(translate_image, argument_tuples, chunksize=1)
 
 

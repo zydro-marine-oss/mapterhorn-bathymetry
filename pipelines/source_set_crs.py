@@ -51,7 +51,7 @@ def main():
     for filepath in filepaths:
         argument_tuples.append((filepath, crs))
     
-    with Pool() as pool:
+    with Pool(processes=utils.prep_pool_size()) as pool:
         pool.starmap(set_crs, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

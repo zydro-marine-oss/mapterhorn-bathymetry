@@ -101,6 +101,22 @@ def store_path(name, *parts, create=True):
     return os.path.join(base, *flat)
 
 
+def prep_pool_size(requested=None):
+    # Cap nested multiprocessing pools under the job runner.
+    # MAPTERHORN_PREP_POOL_SIZE=1 (default when unset under job workers).
+    raw = os.environ.get('MAPTERHORN_PREP_POOL_SIZE')
+    if raw is not None and raw != '':
+        try:
+            n = int(raw)
+            return max(1, n)
+        except ValueError:
+            pass
+    if requested is not None:
+        return max(1, int(requested))
+    return None
+
+
+
 def ensure_store_dirs():
     for name in STORE_NAMES:
         store_dir(name)

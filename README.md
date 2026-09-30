@@ -4,11 +4,11 @@ This fork is a (WIP) attempt to build a combined elevation + bathymetry model by
 
 #### About our Modifications
 
-This branch keeps the upstream mapterhorn Justfile pipeline and adds:
+This branch keeps the upstream mapterhorn pipeline (for the most part). We add a new source type `mask` representing shoreline mask geometry. Shoreline geometry is used to mask `land` or `ocean` sources along the shoreline boundary, allowing the different datasets to be combined.
 
 - Optional source `domain` (`land` / `ocean` / `both` / `mask`) in `source-catalog/*/metadata.json`
 - Shoreline masking (S2Coast + GSHHG Antarctica) during aggregation
-- GEBCO as the global ocean source
+- GEBCO added as an ocean data source
 
 Prepare the shoreline, then GEBCO, from `pipelines/`:
 

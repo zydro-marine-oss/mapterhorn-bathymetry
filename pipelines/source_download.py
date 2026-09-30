@@ -65,11 +65,11 @@ def download_one(source, url, index, total, progress, task_id):
             mode = 'wb'
         elif existing > 0 and response.status_code == 206:
             mode = 'ab'
+        elif response.status_code == 200:
+            existing = 0
+            mode = 'wb'
         else:
             response.raise_for_status()
-            mode = 'wb' if existing == 0 else 'ab'
-            if response.status_code not in (200, 206):
-                response.raise_for_status()
 
         total_size = None
         content_length = response.headers.get('Content-Length')
@@ -79,8 +79,6 @@ def download_one(source, url, index, total, progress, task_id):
                 total_size = existing + remaining
             else:
                 total_size = remaining
-                existing = 0
-                mode = 'wb'
 
         progress.update(
             task_id,

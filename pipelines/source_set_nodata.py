@@ -4,7 +4,6 @@ from multiprocessing import Pool
 
 import rasterio
 
-import source_marker
 import utils
 
 def set_nodata(filepath, nodata):
@@ -31,21 +30,16 @@ def main():
     else:
         print('arguments missing, usage: python source_set_nodata.py {{source}} {{nodata}} [--force] [--dry-run]')
         exit()
-
-    source_marker.require_download_complete(source)
         
-    filepaths = sorted(glob(f'{utils.store_dir("source-store")}/{source}/*'))
+    filepaths = sorted(glob(f'source-store/{source}/*.tif'))
 
     argument_tuples = []
     nodata_values = set({})
     for filepath in filepaths:
-        if not filepath.endswith('.tif'):
-            continue
         with rasterio.open(filepath) as src:
             if src.nodata is None or force:
                 argument_tuples.append((filepath, nodata))
-            else:
-                nodata_values.add(src.nodata)
+            nodata_values.add(src.nodata)
 
     print(f'Found these nodata value(s):')
     for v in nodata_values:
@@ -54,7 +48,7 @@ def main():
     if dry_run or nodata is None:
         print('This is a dry run. Exit now...')
         return
-    with Pool(processes=utils.prep_pool_size()) as pool:
+    with Pool() as pool:
         pool.starmap(set_nodata, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

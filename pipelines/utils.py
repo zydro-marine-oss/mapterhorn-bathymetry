@@ -1,13 +1,12 @@
 import subprocess
 from pathlib import Path
 from glob import glob
+import json
 import math
 import os
 import hashlib
 
 import numpy as np
-
-import json
 
 from rasterio.warp import transform_bounds
 import mercantile
@@ -26,177 +25,13 @@ Y_MAX_3857 = X_MAX_3857
 
 _SOURCE_DOMAIN_CACHE = {}
 
-# ---------------------------------------------------------------------------
-# Data stores live under MAPTERHORN_DATA_ROOT (required; from pipelines/.env).
-# Optional per-store overrides keep SSD/HDD split without symlinks in git.
-# Stores must never resolve inside the git checkout.
-# ---------------------------------------------------------------------------
-STORE_NAMES = (
-    'source-store',
-    'aggregation-store',
-    'tmp-store',
-    'mask-store',
-    'pmtiles-store',
-    'bundle-store',
-    'tar-store',
-    'polygon-store',
-    'meta-store',
-    'task-store',
-)
-
-_STORE_ENV_VARS = {
-    'source-store': 'MAPTERHORN_SOURCE_STORE',
-    'aggregation-store': 'MAPTERHORN_AGGREGATION_STORE',
-    'tmp-store': 'MAPTERHORN_TMP_STORE',
-    'mask-store': 'MAPTERHORN_MASK_STORE',
-    'pmtiles-store': 'MAPTERHORN_PMTILES_STORE',
-    'bundle-store': 'MAPTERHORN_BUNDLE_STORE',
-    'tar-store': 'MAPTERHORN_TAR_STORE',
-    'polygon-store': 'MAPTERHORN_POLYGON_STORE',
-    'meta-store': 'MAPTERHORN_META_STORE',
-    'task-store': 'MAPTERHORN_TASK_STORE',
-}
-
-_PIPELINES_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _PIPELINES_DIR.parent
-_ENV_LOADED = False
-
-
-def repo_root():
-    return str(_REPO_ROOT.resolve())
-
-
-def pipelines_dir():
-    return str(_PIPELINES_DIR.resolve())
-
-
-def load_dotenv(force=False):
-    # Load pipelines/.env into os.environ (does not override existing vars).
-    global _ENV_LOADED
-    if _ENV_LOADED and not force:
-        return
-    env_path = _PIPELINES_DIR / '.env'
-    if env_path.is_file():
-        with open(env_path) as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                if line.startswith('export '):
-                    line = line[len('export '):].strip()
-                key, _, val = line.partition('=')
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if key and key not in os.environ:
-                    os.environ[key] = val
-    _ENV_LOADED = True
-
-
-def _path_is_inside(path, parent):
-    try:
-        Path(path).resolve().relative_to(Path(parent).resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def require_data_config():
-    # Refuse to run with stores under the git checkout.
-    load_dotenv()
-    raw = os.environ.get('MAPTERHORN_DATA_ROOT')
-    if raw is None or str(raw).strip() == '':
-        raise RuntimeError(
-            'MAPTERHORN_DATA_ROOT is not set.\n'
-            '  1) cp pipelines/env.example pipelines/.env\n'
-            '  2) edit .env and set MAPTERHORN_DATA_ROOT to a path OUTSIDE this git repo\n'
-            '  3) re-run (mapterhorn loads .env automatically)'
-        )
-    resolved = Path(raw).expanduser().resolve()
-    if _path_is_inside(resolved, _REPO_ROOT):
-        raise RuntimeError(
-            'MAPTERHORN_DATA_ROOT={!r} is inside the git repo ({}).\n'
-            'Point it at an external path (SSD/HDD), e.g. /mnt/ssd/mapterhorn'.format(
-                str(resolved), repo_root())
-        )
-    return str(resolved)
-
-
-def data_root():
-    return require_data_config()
-
-
-def catalog_root():
-    load_dotenv()
-    override = os.environ.get('MAPTERHORN_CATALOG_ROOT')
-    if override:
-        return str(Path(override).expanduser().resolve())
-    return str((_PIPELINES_DIR.parent / 'source-catalog').resolve())
-
-
-def store_dir(name, create=True):
-    if name not in _STORE_ENV_VARS:
-        raise ValueError('unknown store {!r}'.format(name))
-    require_data_config()
-    env_key = _STORE_ENV_VARS[name]
-    override = os.environ.get(env_key)
-    if override:
-        path = str(Path(override).expanduser().resolve())
-    else:
-        path = os.path.join(data_root(), name)
-    if _path_is_inside(path, _REPO_ROOT):
-        raise RuntimeError(
-            'store {!r} resolves to {!r} inside the git repo. '
-            'Fix MAPTERHORN_DATA_ROOT or {} in pipelines/.env'.format(
-                name, path, env_key)
-        )
-    if create:
-        Path(path).mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def store_path(name, *parts, create=True):
-    base = store_dir(name, create=create)
-    if not parts:
-        return base
-    # Allow store_path('source-store', 'a/b') as well as separate parts
-    flat = []
-    for part in parts:
-        if part is None or part == '':
-            continue
-        flat.extend(str(part).replace('\\', '/').split('/'))
-    return os.path.join(base, *flat)
-
-
-def prep_pool_size(requested=None):
-    # Cap nested multiprocessing pools under the job runner.
-    # MAPTERHORN_PREP_POOL_SIZE=1 (default when unset under job workers).
-    raw = os.environ.get('MAPTERHORN_PREP_POOL_SIZE')
-    if raw is not None and raw != '':
-        try:
-            n = int(raw)
-            return max(1, n)
-        except ValueError:
-            pass
-    if requested is not None:
-        return max(1, int(requested))
-    return None
-
-
-
-def ensure_store_dirs():
-    for name in STORE_NAMES:
-        store_dir(name)
-
-
-def catalog_path(*parts):
-    return os.path.join(catalog_root(), *parts)
 def run_command(command, silent=True, env=None, stream=False):
     if env is None:
         env = os.environ.copy()
     if not silent:
         print(command)
     if stream:
-        # Inherit stdout/stderr so tools like wget can show a live progress bar
+        # Inherit stdout/stderr so tools like wget can show a live progress bar.
         p = subprocess.Popen(command, shell=True, env=env)
         p.communicate()
         if p.returncode != 0:
@@ -212,26 +47,6 @@ def run_command(command, silent=True, env=None, stream=False):
         print(out)
     return out, err
 
-def wget_download(url, dest=None, cwd=None):
-    # Live progress bar; --continue resumes partial downloads.
-    # Raises if wget fails so callers never mark a download complete.
-    quiet = os.environ.get('MAPTERHORN_WGET_QUIET', '0') not in ('', '0', 'false', 'False')
-    parts = ['wget', '--continue']
-    if quiet:
-        parts.append('--no-verbose')
-    else:
-        parts.append('--progress=bar:force')
-    if dest is not None:
-        parts.extend(['-O', '"{}"'.format(dest)])
-    parts.append('"{}"'.format(url))
-    command = ' '.join(parts)
-    if cwd:
-        command = 'cd {} && {}'.format(cwd, command)
-    out, err = run_command(command, silent=False, stream=True)
-    if err:
-        raise RuntimeError('wget failed for {}: {}'.format(url, err))
-    return out, err
-
 def create_folder(path):
     folder_path = Path(path)
     folder_path.mkdir(parents=True, exist_ok=True)
@@ -240,37 +55,38 @@ def get_aggregation_ids():
     '''
     returns aggregation ids ordered from oldest to newest
     '''
-    pattern = store_path('aggregation-store', '*')
-    return list(sorted([path.split('/')[-1] for path in glob(pattern) if os.path.isdir(path)]))
-
+    return list(sorted([path.split('/')[-1] for path in glob('aggregation-store/*')]))
 
 def get_vertical_rounding_multiplier(z):
     return int(2 ** ((10 - z) / 2) / (1 / 256))
 
+def get_rounded_elevation_data(data, z):
+    # full terrarium resolution of 1/256 at `full_resolution_zoom`
+    # multiples of 2 of full terrarium resolution at lower zooms
+    full_resolution_zoom = 19
+    factor = 2 ** (full_resolution_zoom - z) / 256 
+    if factor > 1:
+        factor = 1
+    return np.round(data / factor) * factor
 
 def save_terrarium_tile(data, filepath):
     filename = filepath.split('/')[-1]
     z = int(filename.split('-')[0])
 
-    # full terrarium resolution of 1/256 at `full_resolution_zoom`
-    # multiples of 2 of full terrarium resolution at lower zooms
-    full_resolution_zoom = 19
-    factor = 2 ** (full_resolution_zoom - z) / 256 
-    data = np.round(data / factor) * factor
+    data = get_rounded_elevation_data(data, z)
 
     data += 32768
     rgb = np.zeros((512, 512, 3), dtype=np.uint8)
-    np.seterr(all='raise')
+    np.seterr(all='raise', under='ignore')
     try:
         rgb[..., 0] = data // 256
         rgb[..., 1] = data % 256
         rgb[..., 2] = (data - np.floor(data)) * 256
     except FloatingPointError:
-        print('FloatingPointError raised in {}'.format(filepath))
+        print(f'FloatingPointError raised in {filepath}')
         raise FloatingPointError()
     with open(filepath, 'wb') as f:
         f.write(imagecodecs.webp_encode(rgb, lossless=True))
-
 
 def create_archive(tmp_folder, out_filepath):
     with open(out_filepath, 'wb') as f1:
@@ -283,7 +99,7 @@ def create_archive(tmp_folder, out_filepath):
         max_lat = -math.inf
 
         tile_ids = []
-        for filepath in glob('{}/*.webp'.format(tmp_folder)):
+        for filepath in glob(f'{tmp_folder}/*.webp'):
             filename = filepath.split('/')[-1]
             z, x, y = [int(a) for a in filename.replace('.webp', '').split('-')]
             tile_ids.append(zxy_to_tileid(z=z, x=x, y=y))
@@ -291,7 +107,7 @@ def create_archive(tmp_folder, out_filepath):
 
         for tile_id in tile_ids:
             z, x, y = tileid_to_zxy(tile_id)
-            filepath = '{}/{}-{}-{}.webp'.format(tmp_folder, z, x, y)
+            filepath = f'{tmp_folder}/{z}-{x}-{y}.webp'
             with open(filepath, 'rb') as f2:
                 writer.write_tile(tile_id, f2.read())
 
@@ -327,10 +143,9 @@ def create_archive(tmp_folder, out_filepath):
             },
         )
 
-
 def get_aggregation_item_string(aggregation_id, filename):
     result = ''
-    filepath = store_path('aggregation-store', aggregation_id, filename)
+    filepath = f'aggregation-store/{aggregation_id}/{filename}'
     if not os.path.isfile(filepath):
         return None
     
@@ -339,9 +154,8 @@ def get_aggregation_item_string(aggregation_id, filename):
     
     return result.strip()
 
-
 def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id):
-    filepaths = sorted(glob(store_path('aggregation-store', current_aggregation_id, '*-aggregation.csv')))
+    filepaths = sorted(glob(f'aggregation-store/{current_aggregation_id}/*-aggregation.csv'))
 
     if last_aggregation_id is None:
         return [filepath.split('/')[-1] for filepath in filepaths]
@@ -355,21 +169,19 @@ def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id)
             dirty_filenames.append(filename)
     return dirty_filenames
 
-
 def get_pmtiles_folder(x, y, z):
     if z < 7:
-        return store_dir('pmtiles-store')
+        return 'pmtiles-store'
     if z == 7:
-        return store_path('pmtiles-store', '{}-{}-{}'.format(z, x, y))
+        return f'pmtiles-store/{z}-{x}-{y}'
     else:
         parent = mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=7)
-        return store_path('pmtiles-store', '{}-{}-{}'.format(parent.z, parent.x, parent.y))
-
+        return f'pmtiles-store/{parent.z}-{parent.x}-{parent.y}'
 
 def get_source_domain(source):
     if source in _SOURCE_DOMAIN_CACHE:
         return _SOURCE_DOMAIN_CACHE[source]
-    metadata_path = catalog_path(source, 'metadata.json')
+    metadata_path = '../source-catalog/{}/metadata.json'.format(source)
     domain = 'land'
     if os.path.isfile(metadata_path):
         with open(metadata_path) as f:

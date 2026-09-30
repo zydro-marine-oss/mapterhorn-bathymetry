@@ -1,54 +1,61 @@
-# Mapterhorn (bathymetry)
+### About this `mapterhorn-bathymetry` fork
 
-Public terrain **and** bathymetry tiles for interactive web map visualizations. This workspace extends [Mapterhorn](https://github.com/mapterhorn/mapterhorn) so the same Terrarium PMTiles surface can show seafloor depths as well as land elevations.
+This fork is a (WIP) attempt to build a combined elevation + bathymetry model by adding GEBCO and other bathymetry datasets into the Mapterhorn pipeline. All credit goes to the [mapterhorn](https://github.com/mapterhorn/mapterhorn) team for their work so far! Use at your own risk.
 
-## What changed vs upstream
 
-- **Shoreline masking** — S2Coast-2023 + GSHHG Antarctica decide land vs ocean so land DEMs (often ocean=`0`) do not block bathymetry.
-- **Source `domain`** — `land` (default), `ocean`, `both`, or `mask` in `source-catalog/*/metadata.json`.
-- **Bathymetry catalog** — GEBCO 2026, BathDNN25, EMODnet, NOAA BlueTopo, GMRT, plus helpers for NONNA / AusSeabed / LINZ.
-- **Unattended ops** — `mapterhorn status`, heartbeats in `meta-store/run-status.json`, `.failed` items with `mapterhorn retry-failed`, and `mapterhorn preflight`.
+---
 
-## Repository layout
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://mapterhorn.github.io/.github/brand/screen/mapterhorn-logo-darkmode.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://mapterhorn.github.io/.github/brand/screen/mapterhorn-logo.png">
+  <img alt="Logo" src="https://mapterhorn.github.io/.github/brand/screen/mapterhorn-logo.png">
+</picture>
 
-| Path | Role |
-|------|------|
-| [source-catalog/](source-catalog/) | Per-source download lists, metadata, prep recipes |
-| [pipelines/](pipelines/) | Download → aggregate → downsample → bundle (`uv run mapterhorn`) |
-| [website/](website/) | Static site (viewer, coverage, attribution) |
+Public terrain tiles for interactive web map visualizations — extended here with GEBCO bathymetry so land and seafloor share one Terrarium surface.
 
-## Run the pipeline
+This branch keeps the upstream mapterhorn Justfile pipeline and adds:
 
-From `pipelines/` (`uv run mapterhorn` prints the cheat sheet):
+- Optional source `domain` (`land` / `ocean` / `both` / `mask`) in `source-catalog/*/metadata.json`
+- Shoreline masking (S2Coast + GSHHG Antarctica) during aggregation
+- GEBCO as the global ocean source
 
-```bash
-cd pipelines
-uv sync
-cp env.example .env                 # required; gitignored
-# edit .env → MAPTERHORN_DATA_ROOT=/path/outside/git
-uv run mapterhorn storage              # confirm data disks
-uv run mapterhorn jobs autodownload -y # download + prep (SQLite jobs; resumable)
-uv run mapterhorn covering             # plan tiles
-# two terminals:
-uv run mapterhorn downloader           # copy rasters into tmp as aggregate needs them
-uv run mapterhorn aggregate
-uv run mapterhorn downsample
-uv run mapterhorn bundle --version 1
+Prepare the shoreline, then GEBCO, from `pipelines/`:
+
+```
+just ../source-catalog/s2coast/
+just ../source-catalog/gebco/
 ```
 
-`uv run mapterhorn all --version 1` is covering through bundle. It does **not** download sources.
+See [source-catalog/README.md](./source-catalog/README.md) for `domain`, and [pipelines/README.md](./pipelines/README.md) for the rest of the pipeline.
 
-See [pipelines/README.md](pipelines/README.md) for what each command does, hardware notes, and bathymetry behavior. See [source-catalog/README.md](source-catalog/README.md) for how to add sources. Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md).
+## Viewer
 
-## Requirements
+[https://mapterhorn.com/viewer](https://mapterhorn.com/viewer)
 
-- GDAL (`gdalwarp`, `gdal_translate`, `gdal_rasterize`, `ogr2ogr`, …)
-- [uv](https://github.com/astral-sh/uv), wget
-- **SSD** for `source-store/`, `aggregation-store/`, `tmp-store/` (~2 GiB RAM per worker thread)
-- **HDD** for `pmtiles-store/`, `bundle-store/`, `tar-store/` (large sequential output)
+## Examples
 
-Set `MAPTERHORN_DATA_ROOT` in [`pipelines/.env`](pipelines/env.example) (copy from `env.example`; `.env` is gitignored). The pipeline **refuses to run** if data would land inside the git checkout. Check with `uv run mapterhorn storage`. Wipe stores with `uv run mapterhorn clear-storage -y`. Details in [pipelines/README.md](pipelines/README.md) → Hardware.
+[https://mapterhorn.com/examples](https://mapterhorn.com/examples)
 
-## License notes
+## Migrate from AWS Elevation Tiles (Tilezen Joerd)
 
-Catalog policy is unchanged: commercial-OK, no share-alike. OSM coastlines (ODbL) are not used; S2Coast (CC BY 4.0) is the primary shoreline. Always verify per-product attribution in each source's `LICENSE.pdf` / `metadata.json`.
+```diff
+"hillshadeSource": {
+    "type": "raster-dem",
+-   "tiles": ["https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"],
++   "tiles": ["https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"],
+    "encoding": "terrarium",
+-   "tileSize": 256,
++   "tileSize": 512,
+}
+
+```
+
+## Contributing
+
+[CONTRIBUTING.md](./CONTRIBUTING.md)
+
+## License
+
+Code: BSD-3, see [LICENSE](https://github.com/mapterhorn/mapterhorn/blob/main/LICENSE).
+
+Terrain data: various open-data sources, for a full list see [https://mapterhorn.com/attribution](https://mapterhorn.com/attribution).

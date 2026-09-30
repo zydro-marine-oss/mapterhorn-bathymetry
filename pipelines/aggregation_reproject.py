@@ -13,16 +13,16 @@ FAIL_ON_WARNING = False
 
 def create_virtual_raster(tmp_folder, i, source_items):
     source = source_items[0]['source']
-    vrt_filepath = '{}/{}.vrt'.format(tmp_folder, i)
-    input_file_list_path = '{}/{}-file-list.txt'.format(tmp_folder, i)
+    vrt_filepath = f'{tmp_folder}/{i}.vrt'
+    input_file_list_path = f'{tmp_folder}/{i}-file-list.txt'
     with open(input_file_list_path, 'w') as f:
         for source_item in source_items:
-            f.write(utils.store_dir('tmp-store') + '/source/{}/{}\n'.format(source, source_item['filename']))
-    command = 'gdalbuildvrt -overwrite -input_file_list {} {}'.format(input_file_list_path, vrt_filepath)
+            f.write(f'tmp-store/source/{source}/{source_item["filename"]}\n')
+    command = f'gdalbuildvrt -overwrite -input_file_list {input_file_list_path} {vrt_filepath}'
     out, err = utils.run_command(command, silent=SILENT)
 
     if 'heterogeneous projection' in err:
-        raise Exception('heterogenous projection found in {}'.format(tmp_folder))
+        raise Exception(f'heterogenous projection found in {tmp_folder}')
 
     if not SILENT:
         print(out, err)
@@ -42,24 +42,24 @@ def create_warp(vrt_filepath, vrt_3857_filepath, zoom, aggregation_tile, buffer)
     resolution = get_resolution(zoom)
     command = 'gdalwarp -of vrt -overwrite '
     command += '-t_srs EPSG:3857 '
-    command += '-tr {} {} '.format(resolution, resolution)
-    command += '-te {} {} {} {} '.format(left, bottom, right, top)
+    command += f'-tr {resolution} {resolution} '
+    command += f'-te {left} {bottom} {right} {top} '
     command += '-r cubicspline '
     command += '-dstnodata -9999 '
-    command += '{} {}'.format(vrt_filepath, vrt_3857_filepath)
+    command += f'{vrt_filepath} {vrt_3857_filepath}'
     out, err = utils.run_command(command, silent=SILENT)
     if err.strip() != '' and FAIL_ON_WARNING:
-        raise Exception('gdalwarp failed for {}:\n{}\n{}'.format(vrt_filepath, out, err))
+        raise Exception(f'gdalwarp failed for {vrt_filepath}:\n{out}\n{err}')
 
 def translate(in_filepath, out_filepath):
     command = 'GDAL_CACHEMAX=64 GDAL_NUM_THREADS=1 gdal_translate --config GDAL_MAX_DATASET_POOL_SIZE 1 -of COG '
     command += '-co BIGTIFF=IF_NEEDED -co ADD_ALPHA=YES -co OVERVIEWS=NONE '
     command += '-co SPARSE_OK=YES -co BLOCKSIZE=512 -co COMPRESS=LERC -co MAX_Z_ERROR=0.001 '
-    command += '{} '.format(in_filepath)
-    command += '{}'.format(out_filepath)
+    command += f'{in_filepath} '
+    command += f'{out_filepath}'
     out, err = utils.run_command(command, silent=SILENT)
     if err.strip() != '' and FAIL_ON_WARNING:
-        raise Exception('gdal_translate failed for {}:\n{}\n{}'.format(in_filepath, out, err))
+        raise Exception(f'gdal_translate failed for {in_filepath}:\n{out}\n{err}')
 
 def contains_nodata_pixels(filepath):
     with rasterio.env.Env(GDAL_CACHEMAX=64):
@@ -85,9 +85,9 @@ def reproject(filepath, tmp_folder):
     
     aggregation_tile = mercantile.Tile(x=x, y=y, z=z)
 
-    metadata_filepath = '{}/reprojection.json'.format(tmp_folder)
+    metadata_filepath = f'{tmp_folder}/reprojection.json'
     if os.path.isfile(metadata_filepath):
-        print('reproject {} already done...'.format(filename))
+        print(f'reproject {filename} already done...')
         return
 
     grouped_source_items = utils.get_grouped_source_items(filepath)
@@ -105,9 +105,9 @@ def reproject(filepath, tmp_folder):
     for i, source_items in enumerate(grouped_source_items):
         vrt_filepath = create_virtual_raster(tmp_folder, i, source_items)
         zoom = maxzoom
-        vrt_3857_filepath = '{}/{}-3857.vrt'.format(tmp_folder, i)
+        vrt_3857_filepath = f'{tmp_folder}/{i}-3857.vrt'
         create_warp(vrt_filepath, vrt_3857_filepath, zoom, aggregation_tile, buffer_3857_rounded)
-        out_filepath = '{}/{}-3857.tiff'.format(tmp_folder, i)
+        out_filepath = f'{tmp_folder}/{i}-3857.tiff'
         translate(vrt_3857_filepath, out_filepath)
 
         # Apply shoreline mask before deciding whether lower-priority sources are needed
@@ -131,5 +131,5 @@ def reproject(filepath, tmp_folder):
     with open(metadata_filepath, 'w') as f:
         json.dump(metadata, f, indent=2)
 
-    with open('{}/mask-done'.format(tmp_folder), 'w') as f:
+    with open(f'{tmp_folder}/mask-done', 'w') as f:
         f.write('ok\n')

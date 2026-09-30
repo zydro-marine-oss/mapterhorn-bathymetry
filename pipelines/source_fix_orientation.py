@@ -1,7 +1,6 @@
 from glob import glob
 import sys
 
-import source_marker
 import utils
 
 from multiprocessing import Pool
@@ -19,10 +18,8 @@ def main():
     else:
         print('source argument missing...')
         exit()
-
-    source_marker.require_download_complete(source)
     
-    filepaths = sorted(glob(f'{utils.store_dir("source-store")}/{source}/*'))
+    filepaths = sorted(glob(f'source-store/{source}/*'))
 
     argument_tuples = []
     for filepath in filepaths:
@@ -30,7 +27,7 @@ def main():
             continue
         argument_tuples.append((filepath,))
     
-    with Pool(processes=utils.prep_pool_size()) as pool:
+    with Pool() as pool:
         pool.starmap(fix_orientation, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

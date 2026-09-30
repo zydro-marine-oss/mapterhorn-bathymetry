@@ -2,94 +2,17 @@
 
 # Mapterhorn Pipelines
 
-Mapterhorn has four main pipelines that run in sequence: Source, Aggregation, Downsampling, and Bundle. The input is a set of tifs containing elevation data and the output are PMTiles files with terrain RGB (Terrarium-encoded WebP). This fork also merges public bathymetry into the same elevation surface using a shoreline land/ocean mask.
+Mapterhorn has four main pipelines that run in sequence: Source, Aggregation, Downsampling, and Bundle. The input is a set of tifs containing elevation data and the output are PMTiles files with terrain RGB.
 
 <img src="readme_imgs/pipeline.svg">
-
-## Quick start (operator)
-
-All commands below are run from `pipelines/`. Type `uv run mapterhorn` (or `uv run mapterhorn help`) for the cheat sheet.
-
-There are **two phases**. Several recipes overlap; you only need the ones in this path.
-
-```bash
-uv sync
-cp env.example .env                # REQUIRED (gitignored)
-# set MAPTERHORN_DATA_ROOT to a path outside this repo
-uv run mapterhorn storage
-uv run mapterhorn jobs autodownload -y   # phase 1: SQLite queue + process workers
-uv run mapterhorn covering               # phase 2: plan tiles
-# terminal A:
-uv run mapterhorn downloader             # copy rasters into tmp-store as aggregate asks for them
-# terminal B:
-uv run mapterhorn aggregate
-uv run mapterhorn downsample
-uv run mapterhorn bundle --version 1
-```
-
-After sources are already on disk, `uv run mapterhorn all --version 1` runs covering through bundle (it starts the downloader in the background). It does **not** download sources.
-
-`mapterhorn status` / `retry-failed` / `preflight` are watch/recover tools for aggregation. For source jobs use `mapterhorn jobs status` / `jobs retry` / `jobs reclaim`.
-
-Aggregation progress is written to `meta-store/run-status.json` and `meta-store/logs/{run_id}.log`. Failed aggregation items become `*.csv.failed` without aborting the whole worker pool (set `MAPTERHORN_ABORT_ON_WORKER_FAILURE=1` for legacy abort-all behavior). Source jobs live in `meta-store/jobs.sqlite`.
-
-### CLI commands
-
-| Command | What it actually does |
-|---|---|
-| `mapterhorn storage` | Print which disk each store directory is on. Requires `pipelines/.env` with `MAPTERHORN_DATA_ROOT` outside git. |
-| `mapterhorn clear-storage -y` | Delete store directories under `MAPTERHORN_DATA_ROOT` (optional `--stores name…`). |
-| `mapterhorn jobs autodownload -y` | **The source command.** Enqueue download/prep into SQLite, then run process workers until idle. Live spinner from DB counts. Defaults: 16 download + 4 prep workers. Skips `READY`. Ctrl+C leaves pending jobs for `mapterhorn jobs serve`. |
-| `mapterhorn jobs status [--watch]` | Durable job counts; `--failed` / `--running` for details. |
-| `mapterhorn jobs serve` | Resume workers on pending/reclaimed jobs. |
-| `mapterhorn jobs retry` | Requeue failed source jobs. |
-| `mapterhorn jobs reclaim` | Requeue stale `running` jobs (crashed workers). |
-| `mapterhorn manage autodownload -y` | Alias that delegates to `jobs autodownload`. |
-| `mapterhorn manage list` | Table of catalog vs disk. `DL=yes` = files fetched. `READY=yes` = unzip/prep finished; only then is the source usable. |
-| `mapterhorn covering` | Read complete sources' `bounds.csv` and write the aggregation/downsampling work queues. |
-| `mapterhorn downloader` | Long-running loop: copy (or symlink) rasters from `source-store` into `tmp-store` as aggregate requests them. Run in its own terminal. |
-| `mapterhorn aggregate` | Merge staged rasters into terrain tiles. Needs the downloader running. |
-| `mapterhorn downsample` | Build lower zoom levels from aggregation output. |
-| `mapterhorn bundle --version 1` | Pack tiles into PMTiles + attribution/download URL files. |
-| `mapterhorn all --version 1` | covering + background downloader + aggregate + downsample + bundle. **Does not download sources.** |
-| `mapterhorn status` | Print `meta-store/run-status.json` (aggregation progress, ETA, failures). |
-| `mapterhorn retry-failed` | Turn aggregation `*.csv.failed` back into `*.todo`. |
-| `mapterhorn preflight` | Check GDAL/wget/disk/shoreline/at least one complete land source. |
-| `mapterhorn upload` | Push finished PMTiles (after bundle). |
-
-Aliases you can ignore unless you need them:
-
-| Command | Same as |
-|---|---|
-| `mapterhorn shoreline` | Shoreline half of autodownload (`manage load-shoreline`) |
-| `mapterhorn sources gebco -y` | `manage load gebco -y` |
-| `mapterhorn manage load NAME` | Download + prep one named source |
-| `mapterhorn manage reload NAME -y` | Delete that source, then download it again |
-| `mapterhorn manage clear NAME -y` | Delete only |
-| `mapterhorn manage mark-complete NAME` | After a manual FTP drop (UK England, Japan DEM, …) |
-
-`mapterhorn jobs autodownload gebco -y` / `--ocean` / `--land` / `--dry-run` / `--force` / `-v` / `--download-workers` / `--prep-workers` limit or tune autodownload.
-
-### Bathymetry-specific steps
-
-1. Shoreline mask is built by autodownload (or `mapterhorn shoreline`).
-2. Prepare ocean sources (`gebco`, `emodnet`, `bluetopo`, …) with `"domain": "ocean"` in their `metadata.json`.
-3. Aggregation masks land vs ocean **after** each reproject and **before** the early-exit “fully filled” check, so land DEMs that encode ocean as `0` do not block bathymetry.
-4. Web Mercator bounds are clamped to ±85.051° so polar GEBCO tiles do not explode `bounds.csv`.
-
-Debug land+ocean smoke test:
-
-```bash
-bash debug.sh
-```
 
 ## Source
 
 The source pipeline has multiple parts that are needed to bring source files into a normalized file format.
 
-`source_download.py`: Downloads files from URLs in `file_list.txt` to `source-store/{source}`. Writes `DOWNLOAD_COMPLETE` only after every URL succeeds. Interrupted runs leave that marker absent; `wget --continue` resumes partial files. If the marker is already present, the download is skipped. Unzip/convert can still be running — that is `DL=yes` / `READY=no`.
+`source_download.py`: Downloads files from URLs in `file_list.txt` file to the folder `source-store/{source}`
 
-`source_unzip.py`: If a source contains ZIP/7z files, unpack them. Requires `DOWNLOAD_COMPLETE`. Clears `READY` at start so an in-progress extract never looks finished.
+`source_unzip.py`: If a source contains ZIP files, this script can be used to unpack them.
 
 `source_to_cog.py`: Use this script to make sure that all files are LERC compressed and tiled internally. Note that this is a bit of a mis-nomer because it does not actually create COGs since no overviews are added to the GeoTIFFs.
 
@@ -101,10 +24,6 @@ The source pipeline has multiple parts that are needed to bring source files int
 
 `source_normalize_filenames.py`: Use this if you have strange filenames.
 
-`source_prepare_shoreline.py`: Downloads S2Coast + GSHHG and builds `mask-store/shoreline/land_3857.gpkg`. Aggregation rasterizes these land polygons per tile to separate terrain from bathymetry.
-
-`source_bathdnn_convert.py` / `source_bluetopo_extract.py` / `source_gmrt_download.py`: Bathymetry-specific ingest helpers.
-
 `source_bounds.py`: Required script. Creates `source-store/{source}/bounds.csv` needed for the aggregation covering stage.
 
 `source_polygonize.py`: Required script. Creates `polygon-store/{source}.gpkg` with the coverage polygon of the source. Needed for the tarball creation and the coverage pmtiles part.
@@ -112,24 +31,6 @@ The source pipeline has multiple parts that are needed to bring source files int
 `source_slice.py`: Use this if polygonize is very slow. This happens sometimes with large (>10 GB) tifs.
 
 `source_remove_tifs.py`: Use this to delete the tifs from a `source-store/{source}` folder. The bounds.csv file will not be deleted.
-
-`source_manage.py`: Clear, load, and autodownload source / shoreline data.
-
-```bash
-uv run python source_manage.py list
-uv run python job_runner.py autodownload --yes          # enqueue + process workers; skip READY
-uv run python job_runner.py status --watch
-uv run python job_runner.py retry
-uv run python source_manage.py mark-complete ukengland  # after a manual FTP drop
-uv run python source_manage.py clear gebco --yes
-uv run python source_manage.py load gebco --yes         # catalog Justfile for one source
-uv run python source_manage.py reload gebco --yes       # clear then load
-uv run python source_manage.py reload --ocean --yes
-uv run python source_manage.py clear-shoreline --yes
-uv run python source_manage.py load-shoreline --force --yes
-```
-
-Also available as `uv run mapterhorn jobs …` / `uv run mapterhorn manage …`. Source download/prep jobs are stored in `meta-store/jobs.sqlite`. Two markers in `source-store/{source}/`: `DOWNLOAD_COMPLETE` after wget finishes, `READY` only after unzip/cog/bounds/tarball finish. Covering and the downloader require `READY`. Clear removes `source-store/{source}` plus polygon/tar/meta unless `--keep-derived`. `manage load` runs download+prep via Python handlers (catalog `Justfile` is only a recipe list); `jobs autodownload` plans the same steps as durable jobs and overlaps prep with other sources' downloads.
 
 
 `source_create_tarball.py`: Required script. Creates a tarball in `tar-store/{source}.tar`. Metadata is stored in `meta-store/tar/{source}.json`. Tarball will be needed in the upload stage.
@@ -189,7 +90,8 @@ We iterate over the source item groups starting with the most important one and 
 1. Call gdal to make a virtual raster (vrt) of all source images
 2. Call gdal to warp the vrt to web mercator
 3. Call gdal to reproject the data
-4. Check with rasterio if the resulting tif has nodata pixels. Break if not, else continue with the next source item group.
+4. Apply a shoreline domain mask (land vs ocean) so land DEMs that fill the sea with `0` do not block bathymetry, and ocean sources do not paint over land. Requires `mask-store/shoreline/land_3857.gpkg` from `just ../source-catalog/s2coast/`.
+5. Check with rasterio if the resulting tif has nodata pixels. Break if not, else continue with the next source item group.
 
 Now that we have reprojected the data to web mercator, we need to merge the tifs of different source item groups.
 
@@ -201,21 +103,21 @@ Once this is done, we have a full-filled tif which might contain data from multi
 
 After having reprojected and merged the source data, we now have a tif that contains the aggregated data. What remains to be done in the aggregation pipeline is to store it as PMTiles. We use terrarium encoding since it has a finer resolution than mapbox encoding. Data is stored as webp RGB images which are  25 to 35 percent smaller than PNGs but they take longer to encode.
 
-Tiles are optimized in size by limiting the vertical resolution depending on the zoom level. Terrarium has a maximal resolution of `1/256 m ~ 3.9 mm`. This is used at zoom level 19. At lower zoom levels, the vertical data is rounded to powers of 2 of this maximal resolution:
+Tiles are optimized in size by limiting the vertical resolution depending on the zoom level. Terrarium has a maximal resolution of `1/256 m ~ 3.9 mm`. This is used at zoom level 19. At lower zoom levels, the vertical data is rounded to powers of 2 of this maximal resolution, but never to more than 1 m:
 
 | z | Pixel Size 3857 | Vertical Resolution |
 |----------|----------|----------|
-| 0 | 78.3 km | 2048 m |
-| 1 | 39.1 km | 1024 m |
-| 2 | 19.6 km | 512 m |
-| 3 | 9.78 km | 256 m |
-| 4 | 4.89 km | 128 m |
-| 5 | 2.45 km | 64 m |
-| 6 | 1.22 km | 32 m |
-| 7 | 611 m | 16 m |
-| 8 | 306 m | 8 m |
-| 9 | 153 m | 4 m |
-| 10 | 76.4 m | 2 m |
+| 0 | 78.3 km | 1 m |
+| 1 | 39.1 km | 1 m |
+| 2 | 19.6 km | 1 m |
+| 3 | 9.78 km | 1 m |
+| 4 | 4.89 km | 1 m |
+| 5 | 2.45 km | 1 m |
+| 6 | 1.22 km | 1 m |
+| 7 | 611 m | 1 m |
+| 8 | 306 m | 1 m |
+| 9 | 153 m | 1 m |
+| 10 | 76.4 m | 1 m |
 | 11 | 38.2 m | 1 m |
 | 12 | 19.1 m | 50 cm |
 | 13 | 9.55 m | 25 cm |
@@ -270,6 +172,7 @@ We now bundle these files by creating tile pyramids with multiple zoom levels.
 
 - gdal: https://mothergeo-py.readthedocs.io/en/latest/development/how-to/gdal-ubuntu-pkg.html#install-gdal-ogr
 - uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- just: https://github.com/casey/just?tab=readme-ov-file#installation
 - aws cli: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 - wget
 - curl
@@ -278,99 +181,10 @@ We now bundle these files by creating tile pyramids with multiple zoom levels.
 
 ## Hardware
 
-The pipeline stages work well with **~2 GiB RAM per worker thread**. Example: 64 GiB RAM for a 32-core machine. Throughput rule of thumb: ~100 GiB of normalized input per hour on a 32-core box.
+The pipeline stages work well with 2 GiB of memory per thread. For example, 64 GiB memory are sufficient for a 32 core machine.
 
-### Keep data outside the git repo
+The `aggregation-store` and `source-store` folders should be on SSDs because they get random access.
 
-Do **not** symlink store folders into `pipelines/` (that fights git). Point all stores at a directory outside the checkout:
+The `pmtiles-store` and `bundle-store` and `tar-store` folders can be on HDDs. To get higher write and read speeds, you can combine multiple HDDs into a RAID0. In those folders you only need the files which are relevant to the current aggregation. It is fine to remove the tarballs and PMTiles that are not currently needed from those folders and have them for example in cold storage or on a remote network storage service.
 
-```bash
-cp env.example .env
-# edit .env:
-#   MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn   # REQUIRED, outside git
-#   MAPTERHORN_PMTILES_STORE=/mnt/hdd/mapterhorn/pmtiles-store   # optional
-#   MAPTERHORN_BUNDLE_STORE=/mnt/hdd/mapterhorn/bundle-store
-#   MAPTERHORN_TAR_STORE=/mnt/hdd/mapterhorn/tar-store
-
-# mapterhorn / utils load pipelines/.env automatically
-uv run mapterhorn storage
-```
-
-| Variable | Purpose |
-|----------|---------|
-| `MAPTERHORN_DATA_ROOT` | **Required.** Base dir for every store. Must be outside the git repo or the pipeline exits. |
-| `MAPTERHORN_PMTILES_STORE` etc. | Optional absolute override for one store (SSD/HDD split) |
-| `MAPTERHORN_CATALOG_ROOT` | Rarely needed; defaults to `../source-catalog` next to `pipelines/` |
-
-`.env` is gitignored. The pipeline will not create stores under the checkout: missing or in-repo `MAPTERHORN_DATA_ROOT` is a hard error. Wipe data with `uv run mapterhorn clear-storage -y`.
-
-### What goes on SSD vs HDD
-
-| Directory | Access pattern | Put on | Why |
-|-----------|----------------|--------|-----|
-| `source-store/` | Many random reads during prep + aggregation | **SSD** | Workers and GDAL hit many GeoTIFFs concurrently |
-| `aggregation-store/` | Lots of small CSVs + markers | **SSD** | High metadata / small-file traffic |
-| `tmp-store/` | Hot scratch (queue, copied sources, per-tile warps) | **SSD** | Fastest disk you have; size spikes during aggregate |
-| `mask-store/` | Shoreline vectors + overview | SSD preferred | Modest size (~7 GB); read during every aggregation tile |
-| `pmtiles-store/` | Large sequential writes/reads | **HDD** (or RAID0 HDDs) | Biggest intermediate output |
-| `bundle-store/` | Final `planet.pmtiles` / `6-x-y.pmtiles` | **HDD** | Multi-TB distribution artifacts |
-| `tar-store/` | Source tarballs for upload/archive | **HDD** | Cold-ish; not on the hot path |
-| `polygon-store/`, `meta-store/`, `task-store/` | Small metadata | SSD or with `DATA_ROOT` | Tiny |
-
-```
-     MAPTERHORN_DATA_ROOT=/mnt/ssd/mapterhorn
-                 │
-                 ├─ source-store/        ┐
-                 ├─ aggregation-store/   │ SSD (default under DATA_ROOT)
-                 ├─ tmp-store/           │
-                 └─ mask-store/          ┘
-     MAPTERHORN_PMTILES_STORE=/mnt/hdd/.../pmtiles-store
-     MAPTERHORN_BUNDLE_STORE=/mnt/hdd/.../bundle-store
-     MAPTERHORN_TAR_STORE=/mnt/hdd/.../tar-store
-```
-
-If the SSD is large enough for sources **and** you set `MAPTERHORN_SOFTLINK_SOURCE=1`, the downloader can symlink from `source-store` into `tmp-store` instead of copying (saves SSD space and copy time). Default is copy (`0`).
-
-### Mount the disks
-
-```bash
-sudo mkdir -p /mnt/ssd /mnt/hdd
-sudo mount /dev/nvme0n1p1 /mnt/ssd    # example SSD
-sudo mount /dev/sda1 /mnt/hdd         # example HDD
-
-# Persist with UUIDs from `blkid` in /etc/fstab:
-# UUID=....-ssd  /mnt/ssd  ext4  defaults,noatime  0  2
-# UUID=....-hdd  /mnt/hdd  ext4  defaults,noatime  0  2
-
-mkdir -p /mnt/ssd/mapterhorn /mnt/hdd/mapterhorn/{pmtiles-store,bundle-store,tar-store}
-```
-
-Then set `.env` as above. No symlinks inside the git tree.
-
-### How big should each disk be?
-
-| Disk | Bathymetry / regional experiment | Full planet (land + ocean) |
-|------|----------------------------------|----------------------------|
-| **SSD** | 200 GB–1 TB | **several TB** (`source-store` alone can be multi-TB; upstream cites ~14.5 TiB sources for the full land catalog) |
-| **HDD** | 500 GB–2 TB | **10+ TiB** (`pmtiles-store` + bundles; published planet PMTiles ~10 TiB scale) |
-
-On a constrained SSD you can still put individual huge sources on HDD via a per-source directory under an overridden layout, or keep `MAPTERHORN_SOFTLINK_SOURCE=0` so aggregation copies hot tiles into SSD `tmp-store` (capped by `MAPTERHORN_MAX_TMP_SOURCE_SIZE`, default **100** GiB).
-
-### Environment knobs
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `MAPTERHORN_DATA_ROOT` | (required) | Where stores live — must be outside git; set in `pipelines/.env` |
-| `MAPTERHORN_NUM_WORKERS` | 32 | Aggregation/downsampling worker processes |
-| `MAPTERHORN_MAX_TMP_SOURCE_SIZE` | 100 | Max GiB of `tmp-store/source` before pruning |
-| `MAPTERHORN_SOFTLINK_SOURCE` | 0 | `1` = symlink sources into tmp instead of copying |
-| `MAPTERHORN_MIN_FREE_GB` | 50 | Preflight minimum free space |
-| `MAPTERHORN_PREP_POOL_SIZE` | unset (CPU count) | Cap nested `Pool` size in unzip/cog/polygonize; job workers set `1` |
-
-### Check before a long run
-
-```bash
-uv run mapterhorn storage     # mount points + free space per store
-uv run mapterhorn preflight
-```
-
+As a rule of thumb, with a 32 core machine you can process 100 GiB of normalized input data per hour.

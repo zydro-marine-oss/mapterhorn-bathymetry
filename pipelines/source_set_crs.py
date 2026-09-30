@@ -1,7 +1,6 @@
 from glob import glob
 import sys
 
-import source_marker
 import utils
 
 from multiprocessing import Pool
@@ -28,10 +27,8 @@ def main():
     else:
         print('wrong number of arguments: source_set_crs.py source [crs] [--dry-run]')
         exit()
-
-    source_marker.require_download_complete(source)
     
-    filepaths = sorted(glob(f'{utils.store_dir("source-store")}/{source}/*.tif'))
+    filepaths = sorted(glob(f'source-store/{source}/*.tif'))
 
     if crs is None:
         crses = set({})
@@ -51,7 +48,7 @@ def main():
     for filepath in filepaths:
         argument_tuples.append((filepath, crs))
     
-    with Pool(processes=utils.prep_pool_size()) as pool:
+    with Pool() as pool:
         pool.starmap(set_crs, argument_tuples, chunksize=1)
 
 if __name__ == '__main__':

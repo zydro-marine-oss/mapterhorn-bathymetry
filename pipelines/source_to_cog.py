@@ -1,7 +1,6 @@
 from glob import glob
 import sys
 from multiprocessing import Pool
-import source_marker
 import utils
 
 SILENT = False
@@ -45,23 +44,20 @@ def main():
     else:
         print('source argument missing')
         exit()
-
-    source_marker.require_download_complete(source)
     
     filepaths = []
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.tif')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.TIF')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.tiff')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.xyz')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.asc')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.ASC')
-    filepaths += glob(f'{utils.store_dir("source-store")}/{source}/*.txt')
+    filepaths += glob(f'source-store/{source}/*.tif')
+    filepaths += glob(f'source-store/{source}/*.TIF')
+    filepaths += glob(f'source-store/{source}/*.tiff')
+    filepaths += glob(f'source-store/{source}/*.xyz')
+    filepaths += glob(f'source-store/{source}/*.asc')
+    filepaths += glob(f'source-store/{source}/*.ASC')
+    filepaths += glob(f'source-store/{source}/*.txt')
 
     filepaths = [(filepath,) for filepath in sorted(filepaths)]
 
     print(f'num files: {len(filepaths)}')
-    pool_size = utils.prep_pool_size()
-    with Pool(processes=pool_size) as pool:
+    with Pool() as pool:
         pool.starmap(to_cog, filepaths, chunksize=1)
             
 if __name__ == '__main__':

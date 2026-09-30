@@ -3,7 +3,6 @@ from glob import glob
 import mercantile
 from ulid import ULID
 
-import source_marker
 import utils
 
 def get_mercator_resolutions(minzoom, maxzoom):
@@ -52,15 +51,11 @@ def get_intersecting_tiles_dfs(bounds, tile, zoom):
 
 def get_macrotile_map():
     macrotile_map = {}
-    filepaths = sorted(glob(utils.store_dir('source-store') + '/*/bounds.csv'))
+    filepaths = sorted(glob('source-store/*/bounds.csv'))
     mercator_resolutions = get_mercator_resolutions(0, 32)
     for filepath in filepaths:
         print(f'reading {filepath}...')
-        source = filepath.split('/')[-2]
-        if not source_marker.is_source_ready(source):
-            print('skipping {} - not READY (download/extract still in progress)'.format(
-                source))
-            continue
+        source = filepath.split('/')[1]
         with open(filepath) as f:
             f.readline() # skip header
             line = f.readline().strip()
@@ -155,7 +150,7 @@ def get_aggregation_tiles(macrotile_map):
     return aggregation_tiles
 
 def write_aggregation_items(macrotile_map, aggregation_tiles, aggregation_id):
-    folder = f'{utils.store_dir("aggregation-store")}/{aggregation_id}'
+    folder = f'aggregation-store/{aggregation_id}'
     utils.create_folder(folder)
     for aggregation_tile in aggregation_tiles:
         macrotiles = list(mercantile.children(aggregation_tile, zoom=utils.macrotile_z))
@@ -188,10 +183,10 @@ def write_aggregation_todos():
 
     dirty_filepaths = None
     if len(aggregation_ids) < 2:
-        dirty_filepaths = sorted(glob(f'{utils.store_dir("aggregation-store")}/{aggregation_id}/*-aggregation.csv'))
+        dirty_filepaths = sorted(glob(f'aggregation-store/{aggregation_id}/*-aggregation.csv'))
     else:
         last_aggregation_id = aggregation_ids[-2]
-        dirty_filepaths = [f'{utils.store_dir("aggregation-store")}/{aggregation_id}/{filename}' for filename in utils.get_dirty_aggregation_filenames(aggregation_id, last_aggregation_id)]
+        dirty_filepaths = [f'aggregation-store/{aggregation_id}/{filename}' for filename in utils.get_dirty_aggregation_filenames(aggregation_id, last_aggregation_id)]
     
     for dirty_filepath in dirty_filepaths:
         with open(f'{dirty_filepath}.todo', 'w') as f:
@@ -209,7 +204,7 @@ def main():
     aggregation_tiles = get_aggregation_tiles(macrotile_map)
 
     aggregation_id = str(ULID())
-    utils.create_folder(f'{utils.store_dir("aggregation-store")}/{aggregation_id}')
+    utils.create_folder(f'aggregation-store/{aggregation_id}')
 
     print('write aggregation items...')
     write_aggregation_items(macrotile_map, aggregation_tiles, aggregation_id)

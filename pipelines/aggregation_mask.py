@@ -8,8 +8,7 @@ import rasterio
 import utils
 
 NODATA = -9999
-LAND_3857_GPKG = utils.store_dir('mask-store') + '/shoreline/land_3857.gpkg'
-SHORELINE_VRT = utils.store_dir('mask-store') + '/shoreline/shoreline.vrt'
+LAND_3857_GPKG = 'mask-store/shoreline/land_3857.gpkg'
 
 
 def get_source_domain(source):
@@ -69,7 +68,6 @@ def apply_domain_mask(elevation, land_mask, domain):
 
 def mask_reprojected_groups(filepath, tmp_folder):
     # Kept for manual/debug use; aggregation_reproject applies masks inline.
-    from glob import glob
     done_filepath = '{}/mask-done'.format(tmp_folder)
     if os.path.isfile(done_filepath):
         print('mask already done...')

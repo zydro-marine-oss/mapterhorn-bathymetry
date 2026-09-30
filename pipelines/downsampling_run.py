@@ -4,7 +4,7 @@ from multiprocessing import Pool
 import shutil
 from datetime import datetime
 import os
-import traceback
+import time
 
 import numpy as np
 from PIL import Image
@@ -13,8 +13,6 @@ import mercantile
 from pmtiles.reader import Reader, MmapSource
 
 import utils
-import log
-import status as status_mod
 
 def create_tile(parent_x, parent_y, parent_z, tmp_folder, pmtiles_filenames):
     tile_to_pmtiles_filename = get_tile_to_pmtiles_filename(pmtiles_filenames)
@@ -31,7 +29,8 @@ def create_tile(parent_x, parent_y, parent_z, tmp_folder, pmtiles_filenames):
             filename = tile_to_pmtiles_filename[child]
             file_z, file_x, file_y, _ = [int(a) for a in filename.replace('.pmtiles', '').split('-')]
             pmtiles_folder = utils.get_pmtiles_folder(file_x, file_y, file_z)
-            with open('{}/{}'.format(pmtiles_folder, filename) , 'r+b') as f:
+            filepath = f'tmp-store/{pmtiles_folder.replace("-store", "")}/{filename}'
+            with open(filepath, 'r+b') as f:
                 reader = Reader(MmapSource(f))
                 child_bytes = reader.get(child_z, child_x, child_y)
             child_rgb = np.array(Image.open(io.BytesIO(child_bytes)), dtype=np.float32)
@@ -44,6 +43,8 @@ def create_tile(parent_x, parent_y, parent_z, tmp_folder, pmtiles_filenames):
             
     parent_data = full_data.reshape((512, 2, 512, 2)).mean(axis=(1, 3)) # downsample by 4x4 pixel averaging
 
+    parent_data = utils.get_rounded_elevation_data(parent_data, parent_z)
+
     parent_data += 32768.0
     parent_rgb = np.zeros((512, 512, 3), dtype=np.uint8)
     parent_rgb[:, :, 0] = parent_data // 256
@@ -51,7 +52,7 @@ def create_tile(parent_x, parent_y, parent_z, tmp_folder, pmtiles_filenames):
     parent_rgb[:, :, 2] = np.floor((parent_data - np.floor(parent_data)) * 256)
 
     parent_bytes = imagecodecs.webp_encode(parent_rgb, lossless=True)
-    parent_filepath = '{}/{}-{}-{}.webp'.format(tmp_folder, parent_z, parent_x, parent_y)
+    parent_filepath = f'{tmp_folder}/{parent_z}-{parent_x}-{parent_y}.webp'
     with open(parent_filepath, 'wb') as f:
         f.write(parent_bytes)
 
@@ -70,53 +71,58 @@ def get_tile_to_pmtiles_filename(pmtiles_filenames):
 
 def downsample_single(filepath):
     _, __, filename = filepath.split('/')
-    print('downsampling {}. {}'.format(filename, datetime.now()))
-    if os.path.isfile('{}.done'.format(filepath)):
+    print(f'downsampling {filename}. {datetime.now()}')
+    if os.path.isfile(f'{filepath}.done'):
         print('already done...')
         return
-    if os.path.isfile('{}.failed'.format(filepath)):
-        print('previously failed; skip (use retry_failed.py)')
-        return
-    try:
-        parts = filename.split('-')
-        extent_z, extent_x, extent_y, parent_zoom = [int(a) for a in parts[:4]]
+    
+    queue_folder = 'tmp-store/queue'
+    os.makedirs(queue_folder, exist_ok=True)
+    shutil.copy(filepath, f'{queue_folder}/{filename}.tmp')
+    os.rename(f'{queue_folder}/{filename}.tmp', f'{queue_folder}/{filename}')
+    ready_folder = 'tmp-store/ready'
+    os.makedirs(ready_folder, exist_ok=True)
+    while not os.path.isfile(f'{ready_folder}/{filename}'):
+        print('waiting for download...')
+        time.sleep(1)
+    print('download complete.')
 
-        out_folder = utils.get_pmtiles_folder(extent_x, extent_y, extent_z)
-        utils.create_folder(out_folder)
-        out_filepath = '{}/{}-{}-{}-{}.pmtiles'.format(out_folder, extent_z, extent_x, extent_y, parent_zoom)
+    parts = filename.split('-')
+    extent_z, extent_x, extent_y, parent_zoom = [int(a) for a in parts[:4]]
 
-        extent = mercantile.Tile(x=extent_x, y=extent_y, z=extent_z)
-        tmp_folder = utils.store_dir('tmp-store') + '/{}'.format(filename.replace('-downsampling.csv', ''))
-        os.makedirs(tmp_folder, exist_ok=True)
+    out_folder = utils.get_pmtiles_folder(extent_x, extent_y, extent_z)
+    utils.create_folder(out_folder)
+    out_filepath = f'{out_folder}/{extent_z}-{extent_x}-{extent_y}-{parent_zoom}.pmtiles'
 
-        pmtiles_filenames = None
-        with open(filepath) as f:
-            pmtiles_filenames = f.readlines()
-            pmtiles_filenames = pmtiles_filenames[1:] # skip header
-            pmtiles_filenames = [a.strip() for a in pmtiles_filenames]
+    extent = mercantile.Tile(x=extent_x, y=extent_y, z=extent_z)
+    tmp_folder = f'tmp-store/{filename.replace("-downsampling.csv", "")}'
+    os.makedirs(tmp_folder, exist_ok=True)
 
-        parents = None
-        if extent_z == parent_zoom:
-            parents = [extent]
-        else:
-            parents = list(mercantile.children(extent, zoom=parent_zoom))
-        
-        for parent in parents:
-            create_tile(parent.x, parent.y, parent.z, tmp_folder, pmtiles_filenames)
-        
-        utils.create_archive(tmp_folder, out_filepath)
+    pmtiles_filenames = None
+    with open(filepath) as f:
+        pmtiles_filenames = f.readlines()
+        pmtiles_filenames = pmtiles_filenames[1:] # skip header
+        pmtiles_filenames = [a.strip() for a in pmtiles_filenames]
 
-        shutil.rmtree(tmp_folder)
-        os.rename('{}.todo'.format(filepath), '{}.done'.format(filepath))
-        print('{} done.'.format(filepath))
-    except Exception as e:
-        log.error('downsampling failed', item=filename, error=str(e))
-        with open('{}.failed'.format(filepath), 'w') as f:
-            f.write(str(e) + '\n' + traceback.format_exc())
-        todo = '{}.todo'.format(filepath)
-        if os.path.isfile(todo):
-            os.remove(todo)
-        status_mod.heartbeat('downsampling', last_error=str(e)[:500])
+    parents = None
+    if extent_z == parent_zoom:
+        parents = [extent]
+    else:
+        parents = list(mercantile.children(extent, zoom=parent_zoom))
+    
+    for parent in parents:
+        create_tile(parent.x, parent.y, parent.z, tmp_folder, pmtiles_filenames)
+    
+    utils.create_archive(tmp_folder, out_filepath)
+
+    shutil.rmtree(tmp_folder)
+    with open(f'{filepath}.done', 'w') as f:
+        f.write('')
+    if os.path.isfile(f'{filepath}.todo'):
+        os.remove(f'{filepath}.todo')
+    if os.path.isfile(f'{ready_folder}/{filename}'):
+        os.remove(f'{ready_folder}/{filename}')
+    print(f'{filepath} done.')
 
 def downsample_multiple(filepaths):
     argument_tuples = [(filepath,) for filepath in filepaths]
@@ -127,7 +133,7 @@ def get_child_zoom_to_filepaths():
     child_zoom_to_filepaths = {}
     aggregation_ids = utils.get_aggregation_ids()
     aggregation_id = aggregation_ids[-1]
-    for todo_filepath in sorted(glob(utils.store_dir('aggregation-store') + '/{}/*-downsampling.csv.todo'.format(aggregation_id))):
+    for todo_filepath in sorted(glob(f'aggregation-store/{aggregation_id}/*-downsampling.csv.todo')):
         filename = todo_filepath.split('/')[-1]
         _, __, ___, child_zoom = [int(a) for a in filename.replace('-downsampling.csv.todo', '').split('-')]
         if child_zoom not in child_zoom_to_filepaths:
@@ -136,17 +142,12 @@ def get_child_zoom_to_filepaths():
     return child_zoom_to_filepaths
 
 def main():
-    status_mod.heartbeat('downsampling', downsampling={'started_at': status_mod.utc_now()})
     child_zoom_to_filepaths = get_child_zoom_to_filepaths()
     child_zooms = list(reversed(sorted(list(child_zoom_to_filepaths.keys()))))
     for child_zoom in child_zooms:
         print(child_zoom)
         print(len(child_zoom_to_filepaths[child_zoom]))
         downsample_multiple(child_zoom_to_filepaths[child_zoom])
-        status_mod.refresh()
-        status_mod.heartbeat('downsampling', child_zoom=child_zoom)
-    status_mod.refresh()
-    status_mod.heartbeat('downsampling-complete')
 
 if __name__ == '__main__':
     main()

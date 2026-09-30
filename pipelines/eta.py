@@ -4,11 +4,10 @@ import os
 import math
 
 import utils
-import status as status_mod
 
 def count_children(suffix):
     aggregation_id = utils.get_aggregation_ids()[-1]
-    filepaths = glob(utils.store_dir('aggregation-store') + '/{}/*{}'.format(aggregation_id, suffix))
+    filepaths = glob(f'aggregation-store/{aggregation_id}/*{suffix}')
 
     total_children = 0
     for filepath in filepaths:
@@ -26,33 +25,38 @@ def eta(progress, start_time):
     return eta
 
 def compute(kind):
-    print()
     print(kind)
 
-    children_done = count_children('-{}.csv.done'.format(kind))
-    children_total = count_children('-{}.csv'.format(kind))
-
-    print('time now:', datetime.now())
-    if children_total == 0:
-        print('no items')
+    children_done = count_children(f'-{kind}.csv.done')
+    if children_done == 0:
+        print('not started yet...')
         return
-    print('done, all, percentage:', children_done, children_total, '{:.1%}'.format(children_done / children_total))
+    children_todo = count_children(f'-{kind}.csv.todo')
+    children_total = children_done + children_todo
 
-    filepaths = glob(utils.store_dir('aggregation-store') + '/{}/*-{}.csv.done'.format(utils.get_aggregation_ids()[-1], kind))
+    
+    print(f'children_done  = {children_done:_}    ({(children_done / children_total):.1%})\nchildren_total = {children_total:_}')
+
+    filepaths = glob(f'aggregation-store/{utils.get_aggregation_ids()[-1]}/*-{kind}.csv.done')
     if len(filepaths) == 0:
         print('nothing done yet')
-        return
     first_timestamp = math.inf
+    last_timestamp = -math.inf
     for filepath in filepaths:
-        first_timestamp = min(first_timestamp, os.path.getmtime(filepath))
+        mtime = os.path.getmtime(filepath)
+        first_timestamp = min(first_timestamp, mtime)
+        last_timestamp = max(last_timestamp, mtime)
     start_time = datetime.fromtimestamp(first_timestamp)
+    end_time = datetime.fromtimestamp(last_timestamp)
+    
     print('start time:', start_time)
-    if children_done > 0:
-        print('eta:', eta(children_done / children_total, start_time))
+    print('time now:  ', datetime.now())
+    if children_done == children_total:
+        print('end time:  ', end_time)
+    else:
+        print('eta:       ', eta(children_done / children_total, start_time))
 
 if __name__ == '__main__':
-    # Prefer the unified status command; keep this script for quick ETAs
     compute('aggregation')
-    compute('downsampling')
     print()
-    status_mod.print_status(status_mod.refresh())
+    compute('downsampling')

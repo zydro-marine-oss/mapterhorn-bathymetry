@@ -4,7 +4,22 @@
   <img alt="Logo" src="https://mapterhorn.github.io/.github/brand/screen/mapterhorn-logo.png">
 </picture>
 
-Public terrain tiles for interactive web map visualizations
+Public terrain tiles for interactive web map visualizations — extended here with GEBCO bathymetry so land and seafloor share one Terrarium surface.
+
+This branch keeps the upstream mapterhorn Justfile pipeline and adds:
+
+- Optional source `domain` (`land` / `ocean` / `both` / `mask`) in `source-catalog/*/metadata.json`
+- Shoreline masking (S2Coast + GSHHG Antarctica) during aggregation
+- GEBCO as the global ocean source
+
+Prepare the shoreline, then GEBCO, from `pipelines/`:
+
+```
+just ../source-catalog/s2coast/
+just ../source-catalog/gebco/
+```
+
+See [source-catalog/README.md](./source-catalog/README.md) for `domain`, and [pipelines/README.md](./pipelines/README.md) for the rest of the pipeline.
 
 ## Viewer
 

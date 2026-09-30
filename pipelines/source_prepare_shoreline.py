@@ -17,23 +17,44 @@ ANTARCTICA_LAT = -60.0
 OVERVIEW_PIXEL_SIZE_3857 = 3000.0
 
 
+def is_valid_zip(path):
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        return False
+    try:
+        with zipfile.ZipFile(path, 'r') as zf:
+            bad = zf.testzip()
+            return bad is None
+    except zipfile.BadZipFile:
+        return False
+
+
 def download_file(url, dest):
     utils.create_folder(os.path.dirname(dest))
-    if os.path.isfile(dest) and os.path.getsize(dest) > 0:
+    if is_valid_zip(dest):
         print('already downloaded {}'.format(dest))
         return
+    if os.path.isfile(dest):
+        print('removing invalid download {}'.format(dest))
+        os.remove(dest)
     print('downloading {}...'.format(url))
     # stream=True so the progress bar prints live (run_command otherwise pipes stderr)
     command = 'wget --continue --progress=bar:force -O "{}" "{}"'.format(dest, url)
     out, err = utils.run_command(command, silent=False, stream=True)
     if err:
         raise RuntimeError('wget failed for {}: {}'.format(url, err))
-    if not os.path.isfile(dest) or os.path.getsize(dest) == 0:
-        raise RuntimeError('wget left empty file at {}'.format(dest))
+    if not is_valid_zip(dest):
+        raise RuntimeError(
+            'download is not a valid zip (often an HTML error page): {} ({} bytes)'.format(
+                dest, os.path.getsize(dest) if os.path.isfile(dest) else 0
+            )
+        )
 
 
 def unzip(zip_path, dest_dir):
+    if not is_valid_zip(zip_path):
+        raise RuntimeError('refusing to unzip invalid archive: {}'.format(zip_path))
     utils.create_folder(dest_dir)
+    print('unzipping {} -> {}'.format(zip_path, dest_dir))
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(dest_dir)
 

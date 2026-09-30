@@ -1,3 +1,59 @@
+## 0.0.13
+
+### ✨ Features and improvements
+- Add encoding terrarium in PMTiles metadata (#313)
+- Update jpdem (#309)
+- Add source_fill_nodata.py (#306)
+- Attribute visible sources (#305)
+- Update source dehessen (#301)
+- Add source nlcaribisch*: Dutch Caribbean Islands, 0.5 m (#300)
+
+### 🐞 Bug fixes
+- Fix dk (#312)
+- Fix itbozen (#311)
+- Fix rounding on downsampling bug (#308)
+
+## 0.0.12
+
+### ✨ Features and improvements
+
+- Add source autas: Australia, Tasmania 2 m (#297)
+- Add source esmdt50*: Spain, partial 50 cm (#293)
+- Add source aatw: Taiwan, 20m (#292)
+- Add source debw025: Germany, Baden-Württemberg 25 cm (#290)
+- Add source frhd* and update multi-host pipeline (#289)
+- Introduce manager.py, worker.py, downloader.py: distributed compute workflow (#277, #285, #286 #289)
+
+## 0.0.11
+
+### ✨ Features and improvements
+
+- Update swissalti3d (#251)
+- Add 0.25m DTM for the Canton of Zürich, Switzerland (#250)
+- Add source isr10: Israel 10 m (#252)
+
+## 0.0.10
+
+### ✨ Features and improvements
+
+- add Rwanda 10m DEM source (#197)
+- Document distribution architechture, add health check script (#236)
+- Add source ittrentino: Trentino, Italy 5m (#235)
+- Add source itpiemonte: Piemonte, Italy 5m (#234)
+- Add source itlombardia: Lombardia, Italy 5m (#233)
+
+### 🐞 Bug fixes
+
+- Fix nodata in ukscotland (#243)
+
+## 0.0.9
+
+### 🐞 Bug fixes
+
+- More NaN handling (#221)
+- Fix invalid data holes (#220)
+- Nest tar-store folders by one level (#213)
+
 ## 0.0.8
 
 ### ✨ Features and improvements

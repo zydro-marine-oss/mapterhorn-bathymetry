@@ -6,7 +6,7 @@ import utils
 
 def get_extents_from_coverings(aggregation_id, zoom):
     extents = []
-    filepaths = glob(f'{utils.store_dir("aggregation-store")}/{aggregation_id}/*-*-*-{zoom}-*.csv')
+    filepaths = glob(f'aggregation-store/{aggregation_id}/*-*-*-{zoom}-*.csv')
     for filepath in filepaths:
         filename = filepath.split('/')[-1]
         parts = filename.replace('.csv', '').split('-')
@@ -49,9 +49,10 @@ def is_parent_of_dirty_aggregation_tile(tile, dirty_aggregation_tiles):
     return False
 
 def not_in_previous_aggregation(filename, aggregation_ids):
-    return len(glob(f'{utils.store_dir("aggregation-store")}/{aggregation_ids[-2]}/{filename}')) == 0
+    return len(glob(f'aggregation-store/{aggregation_ids[-2]}/{filename}')) == 0
 
 def write_downlsampling_todos():
+    print('writing downsampling todos...')
     aggregation_ids = utils.get_aggregation_ids()
     aggregation_id = aggregation_ids[-1]
 
@@ -62,7 +63,7 @@ def write_downlsampling_todos():
             z, x, y, _ = [int(a) for a in filename.replace('-aggregation.csv', '').split('-')]
             dirty_aggregation_tiles.append(mercantile.Tile(x=x, y=y, z=z))
 
-    for filepath in sorted(glob(f'{utils.store_dir("aggregation-store")}/{aggregation_id}/*-downsampling.csv')):
+    for filepath in sorted(glob(f'aggregation-store/{aggregation_id}/*-downsampling.csv')):
         filename = filepath.split('/')[-1]
         z, x, y, _ = [int(a) for a in filename.replace('-downsampling.csv', '').split('-')]
 
@@ -104,7 +105,7 @@ def write_downsampling_items():
             for involved_extent in involved_extents:
                 lines.append(f'{involved_extent.z}-{involved_extent.x}-{involved_extent.y}-{child_zoom}.pmtiles\n')
             
-            out_filepath = f'{utils.store_dir("aggregation-store")}/{aggregation_id}/{simplified_extent.z}-{simplified_extent.x}-{simplified_extent.y}-{child_zoom - 1}-downsampling.csv'
+            out_filepath = f'aggregation-store/{aggregation_id}/{simplified_extent.z}-{simplified_extent.x}-{simplified_extent.y}-{child_zoom - 1}-downsampling.csv'
             with open(out_filepath, 'w') as f:
                 f.writelines(lines)
 

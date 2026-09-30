@@ -5,28 +5,25 @@ import math
 import rasterio
 from rasterio.warp import transform_bounds
 
-import source_marker
 import utils
 
 def main():
     source = None
     if len(sys.argv) > 1:
         source = sys.argv[1]
-        print('creating bounds for {}...'.format(source))
+        print(f'creating bounds for {source}...')
     else:
         print('source argument missing...')
         exit()
-
-    source_marker.require_download_complete(source)
     
-    filepaths = sorted(glob(utils.store_dir('source-store') + '/{}/*.tif'.format(source)))
+    filepaths = sorted(glob(f'source-store/{source}/*.tif'))
 
     bounds_file_lines = ['filename,left,bottom,right,top,width,height\n']
 
     for j, filepath in enumerate(filepaths):
         with rasterio.open(filepath) as src:
             if src.crs is None:
-                raise ValueError('crs not defined on {}'.format(filepath))
+                raise ValueError(f'crs not defined on {filepath}')
             left, bottom, right, top = transform_bounds(src.crs, 'EPSG:3857', *src.bounds)
 
             if right - left > 0.9 * 2 * utils.X_MAX_3857:
@@ -38,18 +35,18 @@ def main():
             left, bottom, right, top = utils.clamp_bounds_3857(left, bottom, right, top)
 
             if right <= left or top <= bottom:
-                print('skipping {} after web-mercator clamp (empty extent)'.format(filepath))
+                print(f'skipping {filepath} after web-mercator clamp (empty extent)')
                 continue
 
             for num in [left, bottom, right, top]:
                 if not math.isfinite(num):
-                    raise ValueError('Number in bounds is not finite. src.bounds={} src.crs={} bounds={}'.format(src.bounds, src.crs, (left, bottom, right, top)))
+                    raise ValueError(f'Number in bounds is not finite. src.bounds={src.bounds} src.crs={src.crs} bounds={(left, bottom, right, top)}')
             filename = filepath.split('/')[-1]
-            bounds_file_lines.append('{},{},{},{},{},{},{}\n'.format(filename, left, bottom, right, top, src.width, src.height))
+            bounds_file_lines.append(f'{filename},{left},{bottom},{right},{top},{src.width},{src.height}\n')
             if j % 100 == 0:
-                print('{} / {}'.format(j, len(filepaths)))
+                print(f'{j} / {len(filepaths)}')
 
-    with open(utils.store_dir('source-store') + '/{}/bounds.csv'.format(source), 'w') as f:
+    with open(f'source-store/{source}/bounds.csv', 'w') as f:
         f.writelines(bounds_file_lines)
 
 if __name__ == '__main__':

@@ -10,8 +10,8 @@ import utils
 S2COAST_URL = 'https://zenodo.org/api/records/17092775/files/S2Coast2023_ERSIShapeFile_vector.zip/content'
 GSHHG_URL = 'https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-2.3.7.zip'
 
-RAW_DIR = utils.store_dir('mask-store') + '/shoreline/raw'
-OUT_DIR = utils.store_dir('mask-store') + '/shoreline'
+RAW_DIR = 'mask-store/shoreline/raw'
+OUT_DIR = 'mask-store/shoreline'
 ANTARCTICA_LAT = -60.0
 # Coarse overview for tooling / sanity checks (~3 km); not used for aggregation masking
 OVERVIEW_PIXEL_SIZE_3857 = 3000.0
@@ -19,8 +19,12 @@ OVERVIEW_PIXEL_SIZE_3857 = 3000.0
 
 def download_file(url, dest):
     utils.create_folder(os.path.dirname(dest))
+    if os.path.isfile(dest) and os.path.getsize(dest) > 0:
+        print('already downloaded {}'.format(dest))
+        return
     print('downloading {}...'.format(url))
-    utils.wget_download(url, dest=dest)
+    command = 'wget --no-verbose --continue -O "{}" "{}"'.format(dest, url)
+    utils.run_command(command, silent=False)
 
 
 def unzip(zip_path, dest_dir):

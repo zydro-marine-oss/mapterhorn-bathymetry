@@ -1,7 +1,6 @@
 import sys
 from glob import glob
 import os
-import utils
 
 def main():
     source = None
@@ -12,7 +11,7 @@ def main():
         print('Not enough arguments. Usage: source_remove_tifs.py {{source}}')
         exit()
 
-    filepaths = glob(f'{utils.store_dir("source-store")}/{source}/*.tif')
+    filepaths = glob(f'source-store/{source}/*.tif')
     for filepath in filepaths:
         os.remove(filepath)
 

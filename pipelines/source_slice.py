@@ -5,8 +5,6 @@ from multiprocessing import Pool
 
 import numpy as np
 import rasterio
-import source_marker
-import utils
 
 def make_tile(filepath, x, y, w, h):
     with rasterio.open(filepath) as src:
@@ -45,7 +43,7 @@ def slice_tif(filepath, tile_size):
                 h = min(tile_size, height - y)
                 argument_tuples.append((filepath, x, y, w, h))
     
-    with Pool(processes=utils.prep_pool_size()) as pool:
+    with Pool() as pool:
         pool.starmap(make_tile, argument_tuples, chunksize=1)
     
 def main():
@@ -58,10 +56,8 @@ def main():
     else:
         print('wrong number of arguments: source_slice.py {{source}} {{tile_size}}')
         exit()
-
-    source_marker.require_download_complete(source)
     
-    filepaths = sorted(glob(f'{utils.store_dir("source-store")}/{source}/*.tif'))
+    filepaths = sorted(glob(f'source-store/{source}/*.tif'))
 
     for filepath in filepaths:
         slice_tif(filepath, tile_size)

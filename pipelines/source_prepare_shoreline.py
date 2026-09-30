@@ -23,8 +23,13 @@ def download_file(url, dest):
         print('already downloaded {}'.format(dest))
         return
     print('downloading {}...'.format(url))
-    command = 'wget --no-verbose --continue -O "{}" "{}"'.format(dest, url)
-    utils.run_command(command, silent=False)
+    # stream=True so the progress bar prints live (run_command otherwise pipes stderr)
+    command = 'wget --continue --progress=bar:force -O "{}" "{}"'.format(dest, url)
+    out, err = utils.run_command(command, silent=False, stream=True)
+    if err:
+        raise RuntimeError('wget failed for {}: {}'.format(url, err))
+    if not os.path.isfile(dest) or os.path.getsize(dest) == 0:
+        raise RuntimeError('wget left empty file at {}'.format(dest))
 
 
 def unzip(zip_path, dest_dir):

@@ -25,11 +25,18 @@ Y_MAX_3857 = X_MAX_3857
 
 _SOURCE_DOMAIN_CACHE = {}
 
-def run_command(command, silent=True, env=None):
+def run_command(command, silent=True, env=None, stream=False):
     if env is None:
         env = os.environ.copy()
     if not silent:
         print(command)
+    if stream:
+        # Inherit stdout/stderr so tools like wget can show a live progress bar.
+        p = subprocess.Popen(command, shell=True, env=env)
+        p.communicate()
+        if p.returncode != 0:
+            return '', 'command failed with exit code {}'.format(p.returncode)
+        return '', ''
     p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     stdout, stderr = p.communicate()
     err = stderr.decode()

@@ -101,6 +101,26 @@ def download_one(source, url, index, total, progress, task_id):
     dest = os.path.join('source-store', source, filename)
     existing = os.path.getsize(dest) if os.path.isfile(dest) else 0
 
+    # Already complete: Range past EOF returns 416 on many servers (e.g. CEDA).
+    if existing > 0:
+        try:
+            head = requests.head(url, timeout=60, allow_redirects=True)
+            remote_len = head.headers.get('Content-Length')
+            if (
+                head.status_code == 200
+                and remote_len is not None
+                and existing >= int(remote_len)
+            ):
+                progress.update(
+                    task_id,
+                    total=existing,
+                    completed=existing,
+                    description=short_label(index, total, filename) + ' cached',
+                )
+                return
+        except Exception:
+            pass
+
     headers = {}
     if existing > 0:
         headers['Range'] = 'bytes={}-'.format(existing)
@@ -111,6 +131,16 @@ def download_one(source, url, index, total, progress, task_id):
     try:
         if _stop.is_set():
             raise InterruptedError('cancelled')
+
+        # Local file already covers the remote object
+        if existing > 0 and response.status_code == 416:
+            progress.update(
+                task_id,
+                total=existing,
+                completed=existing,
+                description=short_label(index, total, filename) + ' cached',
+            )
+            return
 
         # Server ignored Range and resent the whole file
         if existing > 0 and response.status_code == 200:

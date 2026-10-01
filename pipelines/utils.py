@@ -16,7 +16,7 @@ from pmtiles.writer import Writer
 
 macrotile_z = 12
 macrotile_buffer_3857 = 150
-num_overviews = 6
+num_overviews = 4
 
 X_MIN_3857, _, X_MAX_3857, __ = transform_bounds('EPSG:4326', 'EPSG:3857', -180, 0, 180, 0)
 # Web Mercator is only valid to ~+-85.05112878 degrees latitude

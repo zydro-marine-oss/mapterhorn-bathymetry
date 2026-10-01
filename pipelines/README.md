@@ -61,7 +61,7 @@ Now that every macrotile is assigned to a group we go ahead and turn macrotiles 
 
 <img src="readme_imgs/simplify.svg">
 
-We limit how large aggregation tiles can be by requiring that their maxzoom to extent zoom difference is not more than 6. This means that an aggregation tile can be at most 64*512=32768 pixels wide. With float32 elevation data this yields roughly 4 gigabytes of uncompressed data.
+We limit how large aggregation tiles can be by requiring that their maxzoom to extent zoom difference is not more than 4. This means that an aggregation tile can be at most 16*512=8192 pixels wide. With float32 elevation data this yields roughly 256 megabytes of uncompressed data.
 
 The aggregation tiles are then written to aggregation csv files containing the work instructions, i.e., which source items to use and at what zoom level they should be reprojected. We store those in paths of the form `aggregation-store/{aggregation_id}/{z}-{x}-{y}-{child_z}-aggregation.csv`
 

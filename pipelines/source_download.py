@@ -1,5 +1,5 @@
 # Download source files listed in source-catalog/{source}/file_list.txt.
-# Defaults to up to 8 parallel workers with stacked Rich progress bars.
+# Defaults to up to 8 parallel workers with Rich progress.
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import unquote, urlparse
 import atexit
@@ -23,11 +23,14 @@ import utils
 
 DEFAULT_WORKERS = 8
 CHUNK_SIZE = 1024 * 256
+# (connect, read) — read timeout applies between chunks while streaming
+HTTP_TIMEOUT = (15, 120)
 
 _stop = threading.Event()
 _active_responses = set()
 _active_lock = threading.Lock()
 _executor = None
+_interrupt_count = 0
 
 
 def request_stop():
@@ -42,7 +45,7 @@ def request_stop():
             pass
 
 
-def _shutdown_executor():
+def _shutdown_executor(wait=False):
     global _executor
     request_stop()
     executor = _executor
@@ -50,14 +53,20 @@ def _shutdown_executor():
     if executor is None:
         return
     try:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=wait, cancel_futures=True)
     except TypeError:
-        executor.shutdown(wait=False)
+        executor.shutdown(wait=wait)
 
 
 def _handle_signal(signum, frame):
-    # Cooperative cancel only; main loop exits after workers unwind.
+    global _interrupt_count
+    _interrupt_count += 1
     request_stop()
+    if _interrupt_count == 1:
+        print('\ninterrupt: stopping downloads (Ctrl+C again to force quit)...', flush=True)
+        return
+    print('\nforce quit', flush=True)
+    os._exit(130)
 
 
 def install_signal_handlers():
@@ -83,7 +92,7 @@ def filename_from_url(url):
     return name
 
 
-def short_label(index, total, filename, width=36):
+def short_label(index, total, filename, width=40):
     prefix = '[{}/{}] '.format(index, total)
     remain = max(8, width - len(prefix))
     if len(filename) <= remain:
@@ -101,38 +110,20 @@ def download_one(source, url, index, total, progress, task_id):
     dest = os.path.join('source-store', source, filename)
     existing = os.path.getsize(dest) if os.path.isfile(dest) else 0
 
-    # Already complete: Range past EOF returns 416 on many servers (e.g. CEDA).
-    if existing > 0:
-        try:
-            head = requests.head(url, timeout=60, allow_redirects=True)
-            remote_len = head.headers.get('Content-Length')
-            if (
-                head.status_code == 200
-                and remote_len is not None
-                and existing >= int(remote_len)
-            ):
-                progress.update(
-                    task_id,
-                    total=existing,
-                    completed=existing,
-                    description=short_label(index, total, filename) + ' cached',
-                )
-                return
-        except Exception:
-            pass
-
     headers = {}
     if existing > 0:
         headers['Range'] = 'bytes={}-'.format(existing)
 
-    response = requests.get(url, stream=True, headers=headers, timeout=120)
+    response = requests.get(
+        url, stream=True, headers=headers, timeout=HTTP_TIMEOUT
+    )
     with _active_lock:
         _active_responses.add(response)
     try:
         if _stop.is_set():
             raise InterruptedError('cancelled')
 
-        # Local file already covers the remote object
+        # Local file already complete (resume Range past EOF)
         if existing > 0 and response.status_code == 416:
             progress.update(
                 task_id,
@@ -140,7 +131,7 @@ def download_one(source, url, index, total, progress, task_id):
                 completed=existing,
                 description=short_label(index, total, filename) + ' cached',
             )
-            return
+            return 'cached'
 
         # Server ignored Range and resent the whole file
         if existing > 0 and response.status_code == 200:
@@ -163,11 +154,22 @@ def download_one(source, url, index, total, progress, task_id):
             else:
                 total_size = remaining
 
+        # Nothing left to fetch
+        if total_size is not None and existing >= total_size:
+            progress.update(
+                task_id,
+                total=existing,
+                completed=existing,
+                description=short_label(index, total, filename) + ' cached',
+            )
+            return 'cached'
+
         progress.update(
             task_id,
             total=total_size,
             completed=existing,
             description=short_label(index, total, filename),
+            visible=True,
         )
 
         with open(dest, mode) as out:
@@ -179,7 +181,11 @@ def download_one(source, url, index, total, progress, task_id):
                 out.write(chunk)
                 progress.advance(task_id, len(chunk))
 
-        progress.update(task_id, description=short_label(index, total, filename) + ' done')
+        progress.update(
+            task_id,
+            description=short_label(index, total, filename) + ' done',
+        )
+        return 'ok'
     finally:
         with _active_lock:
             _active_responses.discard(response)
@@ -200,6 +206,8 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
         return
 
     workers = max(1, min(workers, total))
+    # Keep only a small window of in-flight futures (not one per URL).
+    in_flight_limit = workers * 2
     print('downloading {} files with {} worker(s)...'.format(total, workers))
 
     progress = Progress(
@@ -214,30 +222,47 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
 
     errors = []
     cancelled = False
+    completed = 0
     executor = ThreadPoolExecutor(max_workers=workers)
     _executor = executor
-    futures = {}
+    pending = {}
+    url_iter = enumerate(urls, start=1)
+    # Reuse a small pool of live bars instead of 25k Rich tasks.
+    free_slots = []
+
+    def take_slot():
+        if free_slots:
+            return free_slots.pop()
+        return progress.add_task('starting…', total=None)
+
+    def submit_one(index, url):
+        slot = take_slot()
+        future = executor.submit(
+            download_one, source, url, index, total, progress, slot
+        )
+        pending[future] = (url, slot)
 
     try:
         with progress:
-            task_ids = [
-                progress.add_task(short_label(j, total, filename_from_url(url)), total=None)
-                for j, url in enumerate(urls, start=1)
-            ]
-            futures = {
-                executor.submit(
-                    download_one, source, url, j, total, progress, task_ids[j - 1]
-                ): url
-                for j, url in enumerate(urls, start=1)
-            }
-            pending = set(futures)
+            overall = progress.add_task(
+                'files {}/{}'.format(0, total), total=total
+            )
+            while len(pending) < in_flight_limit:
+                try:
+                    index, url = next(url_iter)
+                except StopIteration:
+                    break
+                submit_one(index, url)
+
             while pending:
                 if _stop.is_set():
                     cancelled = True
                     break
-                done, pending = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
+                done, _ = wait(
+                    set(pending), timeout=0.5, return_when=FIRST_COMPLETED
+                )
                 for future in done:
-                    url = futures[future]
+                    url, slot = pending.pop(future)
                     try:
                         future.result()
                     except InterruptedError:
@@ -247,18 +272,32 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
                             cancelled = True
                         else:
                             errors.append((url, exc))
+                    completed += 1
+                    progress.update(
+                        overall,
+                        completed=completed,
+                        description='files {}/{}'.format(completed, total),
+                    )
+                    progress.reset(slot, total=None, description='idle')
+                    free_slots.append(slot)
+                    if cancelled:
+                        break
+                    try:
+                        index, next_url = next(url_iter)
+                        submit_one(index, next_url)
+                    except StopIteration:
+                        pass
                 if cancelled:
                     break
     finally:
-        # Wake/close any still-running workers. Do not use _stop after this to
-        # decide success — request_stop() always sets it.
         request_stop()
-        for future in futures:
+        for future in list(pending):
             future.cancel()
+        # Never block forever on hung sockets after cancel.
         try:
-            executor.shutdown(wait=True, cancel_futures=True)
+            executor.shutdown(wait=not cancelled, cancel_futures=True)
         except TypeError:
-            executor.shutdown(wait=True)
+            executor.shutdown(wait=not cancelled)
         if _executor is executor:
             _executor = None
 
@@ -270,6 +309,8 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
         for url, exc in errors:
             print('FAILED {}: {}'.format(url, exc))
         raise RuntimeError('{} download(s) failed'.format(len(errors)))
+
+    print('downloaded {} file(s).'.format(total))
 
 
 def main():

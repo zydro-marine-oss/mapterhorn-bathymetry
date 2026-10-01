@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Symlink pipeline stores onto external SSD (external2) and HDD (external1).
 # Run from pipelines/ (or any cwd; script cds to its own directory).
 set -euo pipefail
 
 HDD_ROOT="/run/media/zydro/external1/mapterhorn"
-SSD_ROOT="/run/media/zydro/external2/mapterhorn"
+SSD_ROOT="/home/zydro/mapterhorn-data"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"

@@ -220,6 +220,8 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
                 if cancelled:
                     break
     finally:
+        # Wake/close any still-running workers. Do not use _stop after this to
+        # decide success — request_stop() always sets it.
         request_stop()
         for future in futures:
             future.cancel()
@@ -230,7 +232,7 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
         if _executor is executor:
             _executor = None
 
-    if cancelled or _stop.is_set():
+    if cancelled:
         print('download cancelled; partial files kept for resume')
         raise SystemExit(130)
 

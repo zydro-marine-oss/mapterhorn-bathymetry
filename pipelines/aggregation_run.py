@@ -1,68 +1,84 @@
+# Execute dirty aggregation jobs (reproject → merge → tile).
+# Requires downloader.py staging files into tmp-store/.
 from glob import glob
-import shutil
 import os
-from multiprocessing import Pool
+import shutil
 import time
+from multiprocessing import Pool
 
-import aggregation_reproject
 import aggregation_merge
+import aggregation_reproject
 import aggregation_tile
+import progress_util
 import utils
+
 
 def run(filepath):
     filename = filepath.split('/')[-1]
     item = filename.replace('-aggregation.csv', '')
-    if os.path.isfile(f'{filepath}.done'):
-        print(f'{item} already done, skipping...')
-        return
-    print(f'{item} start')
+    if os.path.isfile('{}.done'.format(filepath)):
+        return 'skip'
+
     queue_folder = 'tmp-store/queue'
     os.makedirs(queue_folder, exist_ok=True)
-    shutil.copy(filepath, f'{queue_folder}/{filename}.tmp')
-    os.rename(f'{queue_folder}/{filename}.tmp', f'{queue_folder}/{filename}')
+    shutil.copy(filepath, '{}/{}.tmp'.format(queue_folder, filename))
+    os.rename(
+        '{}/{}.tmp'.format(queue_folder, filename),
+        '{}/{}'.format(queue_folder, filename),
+    )
     ready_folder = 'tmp-store/ready'
     os.makedirs(ready_folder, exist_ok=True)
-    while not os.path.isfile(f'{ready_folder}/{filename}'):
-        print(f'{item} waiting for download...')
+    while not os.path.isfile('{}/{}'.format(ready_folder, filename)):
         time.sleep(1)
-    print(f'{item} download complete.')
-    tmp_folder = f'tmp-store/{item}'
+
+    tmp_folder = 'tmp-store/{}'.format(item)
     os.makedirs(tmp_folder, exist_ok=True)
-    tic = time.time()
-    print(f'{item} start reproject...')
     aggregation_reproject.reproject(filepath, tmp_folder)
-    print(f'{item} reproject done in {(time.time() - tic):.2f} s')
-    tic = time.time()
-    print(f'{item} start merge...')
     aggregation_merge.merge(filepath, tmp_folder)
-    print(f'{item} merge done in {(time.time() - tic):.2f} s')
-    tic = time.time()
-    print(f'{item} start tile...')
     aggregation_tile.main(filepath, tmp_folder)
-    print(f'{item} tile done in {(time.time() - tic):.2f} s')
     shutil.rmtree(tmp_folder)
-    with open(f'{filepath}.done', 'w') as f:
+
+    with open('{}.done'.format(filepath), 'w') as f:
         f.write('')
-    if os.path.isfile(f'{filepath}.todo'):
-        os.remove(f'{filepath}.todo')
-    if os.path.isfile(f'{ready_folder}/{filename}'):
-        os.remove(f'{ready_folder}/{filename}')
-    print(f'{item} end')
+    if os.path.isfile('{}.todo'.format(filepath)):
+        os.remove('{}.todo'.format(filepath))
+    ready_path = '{}/{}'.format(ready_folder, filename)
+    if os.path.isfile(ready_path):
+        os.remove(ready_path)
+    return 'ok'
+
 
 def main():
-    
     aggregation_ids = utils.get_aggregation_ids()
     aggregation_id = aggregation_ids[-1]
+    dirty_filepaths = [
+        filepath.replace('.todo', '')
+        for filepath in glob(
+            'aggregation-store/{}/*-aggregation.csv.todo'.format(aggregation_id)
+        )
+    ]
+    dirty_filepaths = sorted(dirty_filepaths)
 
-    dirty_filepaths = [filepath.replace('.todo', '') for filepath in glob(f'aggregation-store/{aggregation_id}/*-aggregation.csv.todo')]
     if len(dirty_filepaths) == 0:
         print('nothing to do.')
-    else:
-        print(f'start aggregating {len(dirty_filepaths)} items...')
+        return
 
-    argument_tuples = [(dirty_filepath,) for dirty_filepath in dirty_filepaths]
-    with Pool() as pool:
-        pool.starmap(run, argument_tuples, chunksize=1)
+    with progress_util.make_progress() as progress:
+        overall = progress.add_task(
+            'aggregation run ({})'.format(aggregation_id),
+            total=len(dirty_filepaths),
+        )
+        progress.console.log(
+            'aggregating {} dirty item(s); ensure downloader.py is running'
+            .format(len(dirty_filepaths))
+        )
+        with Pool() as pool:
+            for result in pool.imap_unordered(run, dirty_filepaths, chunksize=1):
+                if result == 'skip':
+                    progress.console.log('skipped already-done item')
+                progress.advance(overall)
+        progress.update(overall, description='aggregation run done')
+
 
 if __name__ == '__main__':
     main()

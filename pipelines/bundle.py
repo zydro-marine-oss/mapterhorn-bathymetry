@@ -60,13 +60,20 @@ except ImportError:
         header_bytes = serialize_header(header)
         return header_bytes, root_bytes, compressed_metadata, leaves_bytes
 
+import progress_util
 import utils
 
-def get_parent_to_filepaths(num_aggregations):
+
+def get_parent_to_filepaths(num_aggregations, progress=None):
     filepaths = sorted(utils.list_pmtiles_filepaths())
 
     parent_to_filepath = {}
     dirty_parents = get_dirty_parents(num_aggregations) if num_aggregations > 0 else None
+    scan = None
+    if progress is not None:
+        scan = progress.add_task(
+            'index pmtiles', total=max(len(filepaths), 1)
+        )
 
     for filepath in filepaths:
         filename = filepath.split('/')[-1]
@@ -82,13 +89,16 @@ def get_parent_to_filepaths(num_aggregations):
             else:
                 parent = mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=6)
         
-        if num_aggregations > 0 and parent not in dirty_parents:
-            continue
+        if not (num_aggregations > 0 and parent not in dirty_parents):
+            if parent not in parent_to_filepath:
+                parent_to_filepath[parent] = []
+            parent_to_filepath[parent].append(filepath)
 
-        if parent not in parent_to_filepath:
-            parent_to_filepath[parent] = []
+        if scan is not None:
+            progress.advance(scan)
 
-        parent_to_filepath[parent].append(filepath)
+    if scan is not None:
+        progress.remove_task(scan)
 
     return parent_to_filepath
 
@@ -129,11 +139,11 @@ def all_tiles_dry_run(get_bytes):
     header = deserialize_header(get_bytes(0, 127))
     return traverse_dry_run(get_bytes, header, header['root_offset'], header['root_length'])
     
-def create_archive(filepaths, name):
-    print(f'start working on {name}...')
+def create_archive(filepaths, name, progress):
+    progress.console.log('start working on {}...'.format(name))
 
     utils.create_folder('bundle-store')
-    out_filepath = f'bundle-store/{name}.pmtiles'
+    out_filepath = 'bundle-store/{}.pmtiles'.format(name)
     checksum = None
 
     min_z = math.inf
@@ -144,7 +154,9 @@ def create_archive(filepaths, name):
     max_lat = -math.inf
     tiles_filepaths = []
     tile_data_length = 0
-    print('dry run over input tiles...')
+    dry = progress.add_task(
+        '{} · dry run'.format(name), total=max(len(filepaths), 1)
+    )
     for filepath in filepaths:
         filename = filepath.split('/')[-1]
         z, x, y, child_z = [int(a) for a in filename.replace('.pmtiles', '').split('-')]    
@@ -161,8 +173,14 @@ def create_archive(filepaths, name):
             for tile_id, tile_offset, tile_length in all_tiles_dry_run(reader.get_bytes):
                 tiles_filepaths.append((tile_id, tile_offset, tile_length, filepath))
                 tile_data_length += tile_length
-    
-    print(f'found {len(tiles_filepaths):_} tiles ({(tile_data_length / 1024 ** 3):.2f} GiB)')
+        progress.advance(dry)
+    progress.remove_task(dry)
+
+    progress.console.log(
+        'found {:_} tiles ({:.2f} GiB)'.format(
+            len(tiles_filepaths), tile_data_length / 1024 ** 3
+        )
+    )
 
     tiles_filepaths.sort()
 
@@ -201,7 +219,7 @@ def create_archive(filepaths, name):
 
     with open(out_filepath, 'wb') as f:
 
-        print('writing header...')
+        progress.console.log('writing header...')
         hash_writer = utils.HashWriter(f)
         hash_writer.write(header_bytes)
         hash_writer.write(root_bytes)
@@ -211,10 +229,12 @@ def create_archive(filepaths, name):
         last_filepath = None
         in_pmtiles_data = None
 
-        print('writing tiles...')
-
-        last_percentage = None
+        write = progress.add_task(
+            '{} · write tiles'.format(name),
+            total=max(tile_data_length, 1),
+        )
         bytes_written = 0
+        last_update = 0.0
         for _, tile_offset, tile_length, filepath in tiles_filepaths:
             if last_filepath != filepath:
                 last_filepath = filepath
@@ -222,17 +242,26 @@ def create_archive(filepaths, name):
                     in_pmtiles_data = f_in.read()
             hash_writer.write(in_pmtiles_data[tile_offset:(tile_offset + tile_length)])
             bytes_written += tile_length
-            percentage = int(100 * bytes_written / tile_data_length)
-            if last_percentage != percentage:
-                print(f'{name}.pmtiles: wrote {percentage} % ({(bytes_written / 1024 ** 3):.2f} GiB / {(tile_data_length / 1024 ** 3):.2f} GiB)')
-                last_percentage = percentage
+            now = time.monotonic()
+            if bytes_written == tile_data_length or now - last_update >= 0.25:
+                progress.update(
+                    write,
+                    completed=bytes_written,
+                    description='{} · write tiles ({:.2f}/{:.2f} GiB)'.format(
+                        name,
+                        bytes_written / 1024 ** 3,
+                        tile_data_length / 1024 ** 3,
+                    ),
+                )
+                last_update = now
 
         checksum = hash_writer.md5.hexdigest()
-        
-    print(checksum)
+        progress.remove_task(write)
+
+    progress.console.log('{} md5 {}'.format(name, checksum))
     utils.create_folder('meta-store/bundle')
     filesize = os.path.getsize(out_filepath)
-    with open(f'meta-store/bundle/{name}.json', 'w') as f:
+    with open('meta-store/bundle/{}.json'.format(name), 'w') as f:
         json.dump({
             'size': filesize,
             'md5sum': checksum,
@@ -256,20 +285,47 @@ def main():
     num_aggregations = None
     if len(sys.argv) == 2:
         num_aggregations = int(sys.argv[1])
-        print(f'bundling the last {num_aggregations} aggregation(s)...')
     else:
         print('Not enough arguments. Usage: bundle.py {{num_aggregations}}')
         exit()
-    
-    parent_to_filepaths = get_parent_to_filepaths(num_aggregations)
-    for parent in parent_to_filepaths:
-        name = get_name_from_parent(parent)
-        print(name)
-        create_archive(parent_to_filepaths[parent], name)
 
-    print(f'The following {len(parent_to_filepaths.keys())} file(s) were created:')
-    for parent in parent_to_filepaths.keys():
-        print(f'{get_name_from_parent(parent)}.pmtiles')
+    created = []
+    with progress_util.make_progress() as progress:
+        overall = progress.add_task(
+            'bundle last {} aggregation(s)'.format(num_aggregations),
+            total=None,
+        )
+        parent_to_filepaths = get_parent_to_filepaths(num_aggregations, progress)
+        if len(parent_to_filepaths) == 0:
+            progress.update(overall, description='bundle: nothing to do')
+            print('nothing to do.')
+            return
+
+        progress.update(
+            overall,
+            total=len(parent_to_filepaths),
+            description='bundle last {} aggregation(s)'.format(num_aggregations),
+        )
+        progress.console.log(
+            'bundling the last {} aggregation(s); {} archive(s) to write'
+            .format(num_aggregations, len(parent_to_filepaths))
+        )
+        for i, parent in enumerate(parent_to_filepaths, start=1):
+            name = get_name_from_parent(parent)
+            created.append(name)
+            progress.update(
+                overall,
+                description='bundle · {} ({}/{})'.format(
+                    name, i, len(parent_to_filepaths)
+                ),
+            )
+            create_archive(parent_to_filepaths[parent], name, progress)
+            progress.advance(overall)
+        progress.update(overall, description='bundle done')
+
+    print('The following {} file(s) were created:'.format(len(created)))
+    for name in created:
+        print('{}.pmtiles'.format(name))
 
 if __name__ == '__main__':
     main()

@@ -178,6 +178,27 @@ def get_pmtiles_folder(x, y, z):
         parent = mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=7)
         return f'pmtiles-store/{parent.z}-{parent.x}-{parent.y}'
 
+def list_pmtiles_filepaths():
+    # One extra directory level is real (z7 folders). Skip a nested
+    # pmtiles-store self-link created by ln following an existing symlink.
+    paths = list(glob('pmtiles-store/*.pmtiles'))
+    for folder in glob('pmtiles-store/*/'):
+        name = os.path.basename(folder.rstrip('/'))
+        if name == 'pmtiles-store':
+            continue
+        paths.extend(glob(os.path.join(folder, '*.pmtiles')))
+    seen = set()
+    unique = []
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        seen.add(real)
+        unique.append(path)
+    return unique
+
 def get_source_domain(source):
     if source in _SOURCE_DOMAIN_CACHE:
         return _SOURCE_DOMAIN_CACHE[source]

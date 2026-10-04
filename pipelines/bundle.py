@@ -1,4 +1,5 @@
 from glob import glob
+import gzip
 import math
 import time
 import sys
@@ -7,14 +8,62 @@ import os
 from io import BytesIO
 
 import mercantile
-from pmtiles.tile import TileType, Compression, deserialize_header, deserialize_directory, Entry
+from pmtiles.tile import (
+    TileType,
+    Compression,
+    deserialize_header,
+    deserialize_directory,
+    Entry,
+    serialize_header,
+    tileid_to_zxy,
+)
 from pmtiles.reader import Reader, MmapSource
-from pmtiles.writer import Writer, finalize_header
+from pmtiles.writer import Writer, optimize_directories
+
+try:
+    from pmtiles.writer import finalize_header
+except ImportError:
+    def finalize_header(
+        header,
+        addressed_tiles_count,
+        tile_entries,
+        tile_contents_count,
+        metadata,
+        clustered,
+        tile_data_length,
+    ):
+        # PyPI pmtiles < git master: Writer.finalize exists, this helper does not.
+        header['addressed_tiles_count'] = addressed_tiles_count
+        header['tile_entries_count'] = len(tile_entries)
+        header['tile_contents_count'] = tile_contents_count
+        tile_entries = sorted(tile_entries, key=lambda e: e.tile_id)
+        header['min_zoom'] = tileid_to_zxy(tile_entries[0].tile_id)[0]
+        header['max_zoom'] = tileid_to_zxy(tile_entries[-1].tile_id)[0]
+        root_bytes, leaves_bytes, num_leaves = optimize_directories(
+            tile_entries, 16384 - 127
+        )
+        compressed_metadata = gzip.compress(json.dumps(metadata).encode(), mtime=0)
+        header['clustered'] = clustered
+        header['internal_compression'] = Compression.GZIP
+        header['root_offset'] = 127
+        header['root_length'] = len(root_bytes)
+        header['metadata_offset'] = header['root_offset'] + header['root_length']
+        header['metadata_length'] = len(compressed_metadata)
+        header['leaf_directory_offset'] = (
+            header['metadata_offset'] + header['metadata_length']
+        )
+        header['leaf_directory_length'] = len(leaves_bytes)
+        header['tile_data_offset'] = (
+            header['leaf_directory_offset'] + header['leaf_directory_length']
+        )
+        header['tile_data_length'] = tile_data_length
+        header_bytes = serialize_header(header)
+        return header_bytes, root_bytes, compressed_metadata, leaves_bytes
 
 import utils
 
 def get_parent_to_filepaths(num_aggregations):
-    filepaths = sorted(glob('pmtiles-store/*.pmtiles') + glob('pmtiles-store/*/*.pmtiles'))
+    filepaths = sorted(utils.list_pmtiles_filepaths())
 
     parent_to_filepath = {}
     dirty_parents = get_dirty_parents(num_aggregations) if num_aggregations > 0 else None

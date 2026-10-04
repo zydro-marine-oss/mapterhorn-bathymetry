@@ -31,13 +31,18 @@ mkdir -p \
 link_store() {
   local name="$1"
   local target="$2"
-  if [[ -L "$name" ]]; then
-    rm -f "$name"
-  elif [[ -e "$name" ]]; then
+  if [[ -e "$name" && ! -L "$name" ]]; then
     echo "refusing to replace non-symlink path: $SCRIPT_DIR/$name" >&2
     exit 1
   fi
-  ln -s "$target" "$name"
+  # -n: replace the symlink itself; without it, ln follows an existing
+  # directory link and creates target/name -> target (infinite nest).
+  ln -sfn "$target" "$name"
+  # Heal a previously nested self-link if present.
+  if [[ -L "$target/$name" ]]; then
+    echo "removing nested self-link $target/$name"
+    rm -f "$target/$name"
+  fi
   echo "$name -> $target"
 }
 

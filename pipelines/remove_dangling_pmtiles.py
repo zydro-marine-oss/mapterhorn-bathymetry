@@ -14,7 +14,7 @@ def main():
         filename = filepath.split('/')[-1]
         expected_pmtiles_filenames.add(filename.replace('-aggregation.csv', '.pmtiles').replace('-downsampling.csv', '.pmtiles'))
 
-    pmtiles_filepaths = set(glob('pmtiles-store/*.pmtiles') + glob('pmtiles-store/*/*.pmtiles'))
+    pmtiles_filepaths = utils.list_pmtiles_filepaths()
 
     print(f'num expected files: {len(expected_pmtiles_filenames)}')
     print(f'num present files:  {len(pmtiles_filepaths)}')
@@ -22,7 +22,10 @@ def main():
         pmtiles_filename = pmtiles_filepath.split('/')[-1]
         if pmtiles_filename not in expected_pmtiles_filenames:
             print(f'Removing {pmtiles_filepath}...')
-            os.remove(pmtiles_filepath)
+            try:
+                os.remove(pmtiles_filepath)
+            except FileNotFoundError:
+                print(f'already gone: {pmtiles_filepath}')
     print('done')
 
 if __name__ == '__main__':

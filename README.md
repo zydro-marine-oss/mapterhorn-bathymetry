@@ -19,7 +19,15 @@ just ../source-catalog/gebco/
 
 See [source-catalog/README.md](./source-catalog/README.md) for `domain`, and [pipelines/README.md](./pipelines/README.md) for the rest of the pipeline.
 
+#### Problems
 
+There are a number of issues with this approach that prevent the dataset from being "production ready":
+
+- The masking using shoreline geometry is binary, which creates 'ridges' and 'ledges' where low-res bathymetry such as from GEBCO does not exactly align with the edge of higher-res terrain data.
+- Some areas of the world (eg French Alps) have mysterious missing tiles.
+- The dataset does not currently mask shorelines for large lakes / inland oceans such as the Great Lakes. It's unclear where we make that cutoff. Should we include _all_ lakes? (an impossible task)
+- Some water bodies are not at MSL 0. How might this affect the output of the pipeline?
+ 
 ---
 
 <picture>

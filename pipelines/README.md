@@ -179,12 +179,70 @@ We now bundle these files by creating tile pyramids with multiple zoom levels.
 - un7z
 - unzip
 
+Upstream mapterhorn now uses pixi + PEP 723 script metadata (`pixi run --script ...`).
+This fork still runs via uv (`uv run python ...`) and keeps `pipelines/pyproject.toml`.
+
 ## Hardware
 
-The pipeline stages work well with 2 GiB of memory per thread. For example, 64 GiB memory are sufficient for a 32 core machine.
+The pipeline stages work well with 200 MiB of memory per thread.
 
 The `aggregation-store` and `source-store` folders should be on SSDs because they get random access.
 
 The `pmtiles-store` and `bundle-store` and `tar-store` folders can be on HDDs. To get higher write and read speeds, you can combine multiple HDDs into a RAID0. In those folders you only need the files which are relevant to the current aggregation. It is fine to remove the tarballs and PMTiles that are not currently needed from those folders and have them for example in cold storage or on a remote network storage service.
 
 As a rule of thumb, with a 32 core machine you can process 100 GiB of normalized input data per hour.
+
+## Steps
+
+Run the pipeline with the following steps:
+
+First, to populate the aggregation-store folder with aggregation and downsampling items that the pipeline will work on later, run:
+
+```bash
+uv run python aggregation_covering.py
+uv run python downsampling_covering.py
+```
+
+Then, start in a separate shell the downloader process:
+
+```bash
+uv run python downloader.py
+```
+
+Then, to run the pipeline on a single node, run:
+
+```bash
+uv run python aggregation_run.py && uv run python downsampling_run.py
+```
+
+To run the pipeline on multiple nodes, run once the manager in its own shell:
+
+```bash
+uv run python manager.py
+```
+
+and then on each node start a worker with:
+
+```bash
+uv run python worker.py
+```
+
+Spawn only one manager. You can spawn multiple workers on different nodes. Make sure that the nodes all have access to the same `aggregation-store/`, `task-store/`, `source-store/`, and `pmtiles-store/` folders for example by using a network share drive.
+
+After the aggregation and downsampling are done, bundle the tiles with:
+
+```bash
+uv run python bundle.py 1
+```
+
+Create a downloads_urls.json file with:
+
+```bash
+uv run python download_urls.py v1.2.3
+```
+
+Create an attribution.json file with:
+
+```bash
+uv run python attribution.py
+```

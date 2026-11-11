@@ -22,7 +22,6 @@ import mercantile
 import numpy as np
 
 import aggregation_mask
-import utils
 
 MACROTILE_BUFFER_3857 = 150
 
@@ -98,45 +97,6 @@ def contains_nodata_pixels(filepath):
                         return True
     return False
 
-# group source items by maxzoom and source
-def get_grouped_source_items(filepath):
-    lines = []
-    with open(filepath) as f:
-        lines = f.readlines()
-    lines = lines[1:] # skip header
-    line_tuples = []
-    for line in lines:
-        source, filename, maxzoom = line.strip().split(',')
-        maxzoom = int(maxzoom)
-        line_tuples.append((
-            -maxzoom,
-            source,
-            filename
-        ))
-    line_tuples = sorted(line_tuples)
-    grouped_source_items = []
-
-    first_line_tuple = line_tuples[0]
-    last_group_signature = (first_line_tuple[0], first_line_tuple[1])
-    current_group = [{
-        'maxzoom': -first_line_tuple[0],
-        'source': first_line_tuple[1],
-        'filename': first_line_tuple[2],
-    }]
-    for line_tuple in line_tuples[1:]:
-        current_group_signature = (line_tuple[0], line_tuple[1])
-        if current_group_signature != last_group_signature:
-            grouped_source_items.append(current_group)
-            current_group = []
-            last_group_signature = current_group_signature
-        current_group.append({
-            'maxzoom': -line_tuple[0],
-            'source': line_tuple[1],
-            'filename': line_tuple[2],
-        })
-    grouped_source_items.append(current_group)
-    return grouped_source_items
-
 def reproject(filepath, tmp_folder):
     filename = filepath.split('/')[-1]
 
@@ -149,7 +109,7 @@ def reproject(filepath, tmp_folder):
         print(f'reproject {filename} already done...')
         return
 
-    grouped_source_items = get_grouped_source_items(filepath)
+    grouped_source_items = aggregation_mask.get_grouped_source_items(filepath)
     maxzoom = grouped_source_items[0][0]['maxzoom']
     resolution = get_resolution(maxzoom)
 
@@ -175,7 +135,7 @@ def reproject(filepath, tmp_folder):
                 land_mask = aggregation_mask.load_shoreline_window(src)
             data = np.nan_to_num(src.read(1), nan=-9999)
             profile = src.profile.copy()
-        domain = source_items[0].get('domain', utils.get_source_domain(source_items[0]['source']))
+        domain = source_items[0].get('domain', aggregation_mask.get_source_domain(source_items[0]['source']))
         masked = aggregation_mask.apply_domain_mask(data, land_mask, domain)
         profile.update(nodata=-9999)
         with rasterio.open(out_filepath, 'w', **profile) as dst:

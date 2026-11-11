@@ -1,18 +1,89 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "numpy>=1.24.4",
+#   "rasterio>=1.3.11",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+#
+# [tool.pixi.dependencies]
+# gdal = "==3.13.3"
+# ///
+
 # Apply shoreline land/ocean mask to reprojected source groups.
+import json
 import os
+import subprocess
 import tempfile
 
 import numpy as np
 import rasterio
 
-import utils
-
 NODATA = -9999
 LAND_3857_GPKG = 'mask-store/shoreline/land_3857.gpkg'
+_SOURCE_DOMAIN_CACHE = {}
+
+
+def run_command(command):
+    p = subprocess.Popen(
+        command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    stdout, stderr = p.communicate()
+    return stdout.decode(), stderr.decode()
 
 
 def get_source_domain(source):
-    return utils.get_source_domain(source)
+    if source in _SOURCE_DOMAIN_CACHE:
+        return _SOURCE_DOMAIN_CACHE[source]
+    metadata_path = '../source-catalog/{}/metadata.json'.format(source)
+    domain = 'land'
+    if os.path.isfile(metadata_path):
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+        domain = metadata.get('domain', 'land')
+    if domain not in ('land', 'ocean', 'both', 'mask'):
+        raise ValueError('invalid domain {!r} for source {}'.format(domain, source))
+    _SOURCE_DOMAIN_CACHE[source] = domain
+    return domain
+
+
+def get_grouped_source_items(filepath):
+    lines = []
+    with open(filepath) as f:
+        lines = f.readlines()
+    lines = lines[1:]  # skip header
+    line_tuples = []
+    for line in lines:
+        source, filename, maxzoom = line.strip().split(',')
+        maxzoom = int(maxzoom)
+        line_tuples.append((-maxzoom, source, filename))
+    line_tuples = sorted(line_tuples)
+    grouped_source_items = []
+
+    first_line_tuple = line_tuples[0]
+    last_group_signature = (first_line_tuple[0], first_line_tuple[1])
+    current_group = [{
+        'maxzoom': -first_line_tuple[0],
+        'source': first_line_tuple[1],
+        'filename': first_line_tuple[2],
+        'domain': get_source_domain(first_line_tuple[1]),
+    }]
+    for line_tuple in line_tuples[1:]:
+        current_group_signature = (line_tuple[0], line_tuple[1])
+        if current_group_signature != last_group_signature:
+            grouped_source_items.append(current_group)
+            current_group = []
+            last_group_signature = current_group_signature
+        current_group.append({
+            'maxzoom': -line_tuple[0],
+            'source': line_tuple[1],
+            'filename': line_tuple[2],
+            'domain': get_source_domain(line_tuple[1]),
+        })
+    grouped_source_items.append(current_group)
+    return grouped_source_items
 
 
 def load_shoreline_window(reference_src):
@@ -39,7 +110,7 @@ def load_shoreline_window(reference_src):
             width=width, height=height,
             src=LAND_3857_GPKG, dst=tmp_path
         )
-        out, err = utils.run_command(cmd, silent=True)
+        out, err = run_command(cmd)
         if not os.path.isfile(tmp_path) or os.path.getsize(tmp_path) == 0:
             raise RuntimeError('gdal_rasterize failed for shoreline mask:\n{}\n{}'.format(out, err))
         with rasterio.open(tmp_path) as shore_src:
@@ -73,7 +144,7 @@ def mask_reprojected_groups(filepath, tmp_folder):
         print('mask already done...')
         return
 
-    grouped_source_items = utils.get_grouped_source_items(filepath)
+    grouped_source_items = get_grouped_source_items(filepath)
     land_mask = None
     for i, source_items in enumerate(grouped_source_items):
         tiff_path = '{}/{}-3857.tiff'.format(tmp_folder, i)

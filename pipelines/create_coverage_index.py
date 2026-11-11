@@ -2,7 +2,7 @@
 # requires-python = ">=3.13"
 # dependencies = [
 #   "mercantile>=1.2.1",
-#   "pmtiles>=3.4.1",
+#   "pmtiles>=3.8.1",
 #   "supermercado>=0.2.0",
 # ]
 #

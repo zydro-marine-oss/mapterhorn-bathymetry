@@ -1,3 +1,14 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "requests>=2.32.4",
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 # Download source files listed in source-catalog/{source}/file_list.txt.
 # Defaults to up to 8 parallel workers with Rich progress.
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -19,7 +30,6 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-import utils
 
 DEFAULT_WORKERS = 8
 CHUNK_SIZE = 1024 * 256
@@ -323,7 +333,7 @@ def main():
     source = sys.argv[1]
     workers = parse_workers(sys.argv)
     print('downloading {}...'.format(source))
-    utils.create_folder('source-store/{}/'.format(source))
+    os.makedirs('source-store/{}/'.format(source), exist_ok=True)
     download_from_internet(source, workers=workers)
 
 

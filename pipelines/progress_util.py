@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 # Shared Rich progress bars for covering / run pipelines.
 from rich.progress import (
     BarColumn,

@@ -1,10 +1,24 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "mercantile>=1.2.1",
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 # Plan downsampling work from aggregation coverings.
 from glob import glob
+import os
 
 import mercantile
 
 import progress_util
-import utils
+
+# Keep in sync with aggregation_covering.NUM_OVERVIEWS (fork uses 4; upstream uses 6).
+NUM_OVERVIEWS = 4
 
 
 def get_extents_from_coverings(aggregation_id, zoom):
@@ -32,11 +46,11 @@ def get_simplified_extents(extents, zoom):
     for unlimited in simplified_extents_unlimited:
         if unlimited.z == zoom:
             simplified_extents.append(mercantile.parent(unlimited, zoom=zoom - 1))
-        elif unlimited.z >= zoom - utils.num_overviews:
+        elif unlimited.z >= zoom - NUM_OVERVIEWS:
             simplified_extents.append(unlimited)
         else:
             simplified_extents += list(
-                mercantile.children(unlimited, zoom=zoom - utils.num_overviews)
+                mercantile.children(unlimited, zoom=zoom - NUM_OVERVIEWS)
             )
     return simplified_extents
 
@@ -62,13 +76,42 @@ def not_in_previous_aggregation(filename, aggregation_ids):
     return len(glob('aggregation-store/{}/{}'.format(aggregation_ids[-2], filename))) == 0
 
 
+def get_aggregation_item_string(aggregation_id, filename):
+    filepath = 'aggregation-store/{}/{}'.format(aggregation_id, filename)
+    if not os.path.isfile(filepath):
+        return None
+    with open(filepath) as f:
+        result = ''.join([line.strip() for line in f.readlines()])
+    return result.strip()
+
+
+def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id):
+    # Content comparison vs previous aggregation (fork behavior; see note in reply).
+    filepaths = sorted(
+        glob('aggregation-store/{}/*-aggregation.csv'.format(current_aggregation_id))
+    )
+    if last_aggregation_id is None:
+        return [filepath.split('/')[-1] for filepath in filepaths]
+
+    dirty_filenames = []
+    for filepath in filepaths:
+        filename = filepath.split('/')[-1]
+        current = get_aggregation_item_string(current_aggregation_id, filename)
+        last = get_aggregation_item_string(last_aggregation_id, filename)
+        if current != last:
+            dirty_filenames.append(filename)
+    return dirty_filenames
+
+
 def write_downsampling_todos(progress, overall_task):
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [
+        folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))
+    ]
     aggregation_id = aggregation_ids[-1]
 
     dirty_aggregation_tiles = []
     if len(aggregation_ids) >= 2:
-        dirty_aggregation_filenames = utils.get_dirty_aggregation_filenames(
+        dirty_aggregation_filenames = get_dirty_aggregation_filenames(
             aggregation_id, aggregation_ids[-2]
         )
         for filename in dirty_aggregation_filenames:
@@ -104,11 +147,13 @@ def write_downsampling_todos(progress, overall_task):
 
 
 def write_downsampling_items(progress, overall_task):
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [
+        folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))
+    ]
     aggregation_id = aggregation_ids[-1]
 
-    command = 'rm -f aggregation-store/{}/*-downsampling.csv'.format(aggregation_id)
-    utils.run_command(command)
+    for filepath in glob('aggregation-store/{}/*-downsampling.csv'.format(aggregation_id)):
+        os.remove(filepath)
 
     child_zooms = list(reversed(range(1, 32)))
     step = progress.add_task('downsampling coverings', total=len(child_zooms))

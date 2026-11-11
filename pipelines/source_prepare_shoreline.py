@@ -1,11 +1,24 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+#
+# [tool.pixi.dependencies]
+# gdal = "==3.13.3"
+# wget = "*"
+# ///
+
 # Download and prepare the global ocean/land shoreline vectors.
 # Uses S2Coast-2023 (CC-BY 4.0) plus GSHHG for Antarctica (S2Coast excludes it).
 # Aggregation rasterizes these vectors per tile (a global 30 m raster would be terabytes).
 from glob import glob
 import os
+import subprocess
 import zipfile
 
-import utils
 
 S2COAST_URL = 'https://zenodo.org/api/records/17092775/files/S2Coast2023_ERSIShapeFile_vector.zip/content'
 GSHHG_URL = 'https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-2.3.7.zip'
@@ -15,6 +28,25 @@ OUT_DIR = 'mask-store/shoreline'
 ANTARCTICA_LAT = -60.0
 # Coarse overview for tooling / sanity checks (~3 km); not used for aggregation masking
 OVERVIEW_PIXEL_SIZE_3857 = 3000.0
+
+
+X_MIN_3857 = -20037508.342789244
+Y_MIN_3857 = -20037508.342789244
+X_MAX_3857 = 20037508.342789244
+Y_MAX_3857 = 20037508.342789244
+
+
+def run_command(command, stream=False):
+    if stream:
+        p = subprocess.Popen(command, shell=True)
+        p.communicate()
+        if p.returncode != 0:
+            return '', 'command failed with exit code {}'.format(p.returncode)
+        return '', ''
+    p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    return stdout.decode(), stderr.decode()
+
 
 
 def is_valid_zip(path):
@@ -29,7 +61,7 @@ def is_valid_zip(path):
 
 
 def download_file(url, dest):
-    utils.create_folder(os.path.dirname(dest))
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     if is_valid_zip(dest):
         print('already downloaded {}'.format(dest))
         return
@@ -39,7 +71,7 @@ def download_file(url, dest):
     print('downloading {}...'.format(url))
     # stream=True so the progress bar prints live (run_command otherwise pipes stderr)
     command = 'wget --continue --progress=bar:force -O "{}" "{}"'.format(dest, url)
-    out, err = utils.run_command(command, silent=False, stream=True)
+    out, err = run_command(command, stream=True)
     if err:
         raise RuntimeError('wget failed for {}: {}'.format(url, err))
     if not is_valid_zip(dest):
@@ -53,7 +85,7 @@ def download_file(url, dest):
 def unzip(zip_path, dest_dir):
     if not is_valid_zip(zip_path):
         raise RuntimeError('refusing to unzip invalid archive: {}'.format(zip_path))
-    utils.create_folder(dest_dir)
+    os.makedirs(dest_dir, exist_ok=True)
     print('unzipping {} -> {}'.format(zip_path, dest_dir))
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(dest_dir)
@@ -68,7 +100,7 @@ def find_shapefile(root, patterns):
 
 
 def prepare_vectors():
-    utils.create_folder(RAW_DIR)
+    os.makedirs(RAW_DIR, exist_ok=True)
     s2_zip = '{}/s2coast.zip'.format(RAW_DIR)
     gshhg_zip = '{}/gshhg.zip'.format(RAW_DIR)
     download_file(S2COAST_URL, s2_zip)
@@ -101,36 +133,36 @@ def prepare_vectors():
 
 
 def build_combined_land_gpkg(s2_shp, gshhg_shp, out_gpkg_4326, out_gpkg_3857):
-    utils.create_folder(os.path.dirname(out_gpkg_4326))
+    os.makedirs(os.path.dirname(out_gpkg_4326), exist_ok=True)
     tmp_s2 = '{}/s2_land.gpkg'.format(OUT_DIR)
     tmp_ant = '{}/gshhg_antarctica.gpkg'.format(OUT_DIR)
 
     cmd = 'ogr2ogr -overwrite -t_srs EPSG:4326 -nln land {} "{}"'.format(tmp_s2, s2_shp)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
 
     cmd = (
         'ogr2ogr -overwrite -t_srs EPSG:4326 -nln land '
         '-clipsrc -180 -90 180 {lat} '
         '{out} "{src}"'
     ).format(lat=ANTARCTICA_LAT, out=tmp_ant, src=gshhg_shp)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
 
     if os.path.isfile(out_gpkg_4326):
         os.remove(out_gpkg_4326)
     cmd = 'ogr2ogr -f GPKG {} {}'.format(out_gpkg_4326, tmp_s2)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
     cmd = 'ogr2ogr -update -append -nln land {} {}'.format(out_gpkg_4326, tmp_ant)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
 
     cmd = 'ogr2ogr -overwrite -t_srs EPSG:3857 {} {}'.format(out_gpkg_3857, out_gpkg_4326)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
 
 
 def build_coarse_overview(land_3857_gpkg, out_tif, out_vrt):
-    left = utils.X_MIN_3857
-    bottom = utils.Y_MIN_3857
-    right = utils.X_MAX_3857
-    top = utils.Y_MAX_3857
+    left = X_MIN_3857
+    bottom = Y_MIN_3857
+    right = X_MAX_3857
+    top = Y_MAX_3857
     tmp_raw = '{}/shoreline_overview_raw.tif'.format(OUT_DIR)
     cmd = (
         'gdal_rasterize -burn 1 -init 0 -ot Byte '
@@ -142,20 +174,20 @@ def build_coarse_overview(land_3857_gpkg, out_tif, out_vrt):
         left=left, bottom=bottom, right=right, top=top,
         ps=OVERVIEW_PIXEL_SIZE_3857, src=land_3857_gpkg, dst=tmp_raw
     )
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
     cmd = (
         'gdal_translate -of COG -co COMPRESS=DEFLATE -co BLOCKSIZE=512 '
         '-co BIGTIFF=YES -co OVERVIEWS=NONE {} {}'
     ).format(tmp_raw, out_tif)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
     if os.path.isfile(tmp_raw):
         os.remove(tmp_raw)
     cmd = 'gdalbuildvrt -overwrite {} {}'.format(out_vrt, out_tif)
-    utils.run_command(cmd, silent=False)
+    run_command(cmd)
 
 
 def main():
-    utils.create_folder(OUT_DIR)
+    os.makedirs(OUT_DIR, exist_ok=True)
     land_4326 = '{}/land.gpkg'.format(OUT_DIR)
     land_3857 = '{}/land_3857.gpkg'.format(OUT_DIR)
     overview_tif = '{}/shoreline.tif'.format(OUT_DIR)

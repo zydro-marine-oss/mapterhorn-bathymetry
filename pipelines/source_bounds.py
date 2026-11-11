@@ -15,7 +15,16 @@ import math
 import rasterio
 from rasterio.warp import transform_bounds
 
-_, __, X_MAX_3857, ___ = transform_bounds('EPSG:4326', 'EPSG:3857', -180, 0, 180, 0)
+X_MIN_3857, __, X_MAX_3857, ___ = transform_bounds('EPSG:4326', 'EPSG:3857', -180, 0, 180, 0)
+Y_MIN_3857 = -X_MAX_3857
+Y_MAX_3857 = X_MAX_3857
+
+def clamp_bounds_3857(left, bottom, right, top):
+    left = max(left, X_MIN_3857)
+    right = min(right, X_MAX_3857)
+    bottom = max(bottom, Y_MIN_3857)
+    top = min(top, Y_MAX_3857)
+    return left, bottom, right, top
 
 def main(source):
     filepaths = sorted(glob(f'source-store/{source}/*.tif'))
@@ -34,7 +43,7 @@ def main(source):
                 # and we need to flip it back
                 left, right = right, left
 
-            left, bottom, right, top = utils.clamp_bounds_3857(left, bottom, right, top)
+            left, bottom, right, top = clamp_bounds_3857(left, bottom, right, top)
 
             if right <= left or top <= bottom:
                 print(f'skipping {filepath} after web-mercator clamp (empty extent)')

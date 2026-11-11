@@ -1,3 +1,19 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "imagecodecs>=2023.3.16",
+#   "mercantile>=1.2.1",
+#   "numpy>=1.24.4",
+#   "pillow>=10.4.0",
+#   "pmtiles>=3.8.1",
+#   "rasterio>=1.3.11",
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 # Execute dirty downsampling jobs (build parent Terrarium tiles from children).
 # Requires downloader.py staging pmtiles into tmp-store/.
 from glob import glob
@@ -106,7 +122,7 @@ def downsample_single(filepath):
     extent_z, extent_x, extent_y, parent_zoom = [int(a) for a in parts[:4]]
 
     out_folder = utils.get_pmtiles_folder(extent_x, extent_y, extent_z)
-    utils.create_folder(out_folder)
+    os.makedirs(out_folder, exist_ok=True)
     out_filepath = '{}/{}-{}-{}-{}.pmtiles'.format(
         out_folder, extent_z, extent_x, extent_y, parent_zoom
     )
@@ -140,7 +156,7 @@ def downsample_single(filepath):
 
 def get_child_zoom_to_filepaths():
     child_zoom_to_filepaths = {}
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))]
     aggregation_id = aggregation_ids[-1]
     for todo_filepath in sorted(
         glob('aggregation-store/{}/*-downsampling.csv.todo'.format(aggregation_id))

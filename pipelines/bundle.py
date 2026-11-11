@@ -1,9 +1,22 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "mercantile>=1.2.1",
+#   "pmtiles>=3.8.1",
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 from glob import glob
 import gzip
 import math
 import time
 import sys
 import json
+import hashlib
 import os
 from io import BytesIO
 
@@ -61,11 +74,48 @@ except ImportError:
         return header_bytes, root_bytes, compressed_metadata, leaves_bytes
 
 import progress_util
-import utils
+
+
+def list_pmtiles_filepaths():
+    # One extra directory level is real (z7 folders). Skip a nested
+    # pmtiles-store self-link created by ln following an existing symlink.
+    paths = list(glob('pmtiles-store/*.pmtiles'))
+    for folder in glob('pmtiles-store/*/'):
+        name = os.path.basename(folder.rstrip('/'))
+        if name == 'pmtiles-store':
+            continue
+        paths.extend(glob(os.path.join(folder, '*.pmtiles')))
+    seen = set()
+    unique = []
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        seen.add(real)
+        unique.append(path)
+    return unique
+
+
+class HashWriter:
+    def __init__(self, f):
+        self.f = f
+        self.md5 = hashlib.md5()
+    def write(self, data):
+        self.md5.update(data)
+        return self.f.write(data)
+    def tell(self):
+        return self.f.tell()
+    def flush(self):
+        return self.f.flush()
+    def close(self):
+        return self.f.close()
+
 
 
 def get_parent_to_filepaths(num_aggregations, progress=None):
-    filepaths = sorted(utils.list_pmtiles_filepaths())
+    filepaths = sorted(list_pmtiles_filepaths())
 
     parent_to_filepath = {}
     dirty_parents = get_dirty_parents(num_aggregations) if num_aggregations > 0 else None
@@ -102,21 +152,56 @@ def get_parent_to_filepaths(num_aggregations, progress=None):
 
     return parent_to_filepath
 
+def get_aggregation_item_string(aggregation_id, filename):
+    filepath = 'aggregation-store/{}/{}'.format(aggregation_id, filename)
+    if not os.path.isfile(filepath):
+        return None
+    with open(filepath) as f:
+        result = ''.join([line.strip() for line in f.readlines()])
+    return result.strip()
+
+
+def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id):
+    # Content comparison vs previous aggregation (fork behavior).
+    filepaths = sorted(
+        glob('aggregation-store/{}/*-aggregation.csv'.format(current_aggregation_id))
+    )
+    if last_aggregation_id is None:
+        return [filepath.split('/')[-1] for filepath in filepaths]
+
+    dirty_filenames = []
+    for filepath in filepaths:
+        filename = filepath.split('/')[-1]
+        current = get_aggregation_item_string(current_aggregation_id, filename)
+        last = get_aggregation_item_string(last_aggregation_id, filename)
+        if current != last:
+            dirty_filenames.append(filename)
+    return dirty_filenames
+
+
 def get_dirty_parents(num_aggregations):
     dirty_parents = set([mercantile.Tile(x=0, y=0, z=0)])
 
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [
+        folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))
+    ]
     assert len(aggregation_ids) >= num_aggregations
 
     for offset in range(num_aggregations):
         current_aggregation_id = aggregation_ids[-1 - offset]
         last_aggregation_id = None if len(aggregation_ids) == 1 else aggregation_ids[-2 - offset]
-        aggregation_filenames = utils.get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id)
-        
+        aggregation_filenames = get_dirty_aggregation_filenames(
+            current_aggregation_id, last_aggregation_id
+        )
+
         for filename in aggregation_filenames:
-            z, x, y, child_z = [int(a) for a in filename.replace('-aggregation.csv', '').split('-')]
+            z, x, y, child_z = [
+                int(a) for a in filename.replace('-aggregation.csv', '').split('-')
+            ]
             if child_z >= 13:
-                dirty_parents.add(mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=6))
+                dirty_parents.add(
+                    mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=6)
+                )
 
     return list(dirty_parents)
 
@@ -142,7 +227,7 @@ def all_tiles_dry_run(get_bytes):
 def create_archive(filepaths, name, progress):
     progress.console.log('start working on {}...'.format(name))
 
-    utils.create_folder('bundle-store')
+    os.makedirs('bundle-store', exist_ok=True)
     out_filepath = 'bundle-store/{}.pmtiles'.format(name)
     checksum = None
 
@@ -220,7 +305,7 @@ def create_archive(filepaths, name, progress):
     with open(out_filepath, 'wb') as f:
 
         progress.console.log('writing header...')
-        hash_writer = utils.HashWriter(f)
+        hash_writer = HashWriter(f)
         hash_writer.write(header_bytes)
         hash_writer.write(root_bytes)
         hash_writer.write(compressed_metadata)
@@ -259,7 +344,7 @@ def create_archive(filepaths, name, progress):
         progress.remove_task(write)
 
     progress.console.log('{} md5 {}'.format(name, checksum))
-    utils.create_folder('meta-store/bundle')
+    os.makedirs('meta-store/bundle', exist_ok=True)
     filesize = os.path.getsize(out_filepath)
     with open('meta-store/bundle/{}.json'.format(name), 'w') as f:
         json.dump({

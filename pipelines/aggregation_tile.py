@@ -4,7 +4,7 @@
 #   "imagecodecs>=2023.3.16",
 #   "mercantile>=1.2.1",
 #   "numpy>=1.24.4",
-#   "pmtiles>=3.4.1",
+#   "pmtiles>=3.8.1",
 #   "rasterio>=1.3.11",
 # ]
 #

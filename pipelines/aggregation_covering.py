@@ -1,12 +1,32 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "mercantile>=1.2.1",
+#   "python-ulid>=1.1.0",
+#   "rasterio>=1.3.11",
+#   "rich>=13.0.0",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 # Plan aggregation work from source-store/*/bounds.csv.
 # Writes aggregation-store/{aggregation_id}/*-aggregation.csv (+ .todo markers).
 from glob import glob
+import os
 
 import mercantile
 from ulid import ULID
+from rasterio.warp import transform_bounds
 
 import progress_util
-import utils
+
+# Fork uses 4 overviews (upstream uses 6) so aggregation tiles stay smaller.
+NUM_OVERVIEWS = 4
+MACROTILE_BUFFER_3857 = 150
+MACROTILE_Z = 12
+X_MIN_3857, _, X_MAX_3857, __ = transform_bounds('EPSG:4326', 'EPSG:3857', -180, 0, 180, 0)
 
 
 def get_mercator_resolutions(minzoom, maxzoom):
@@ -33,8 +53,8 @@ def split_at_antimeridian(bbox):
     left, bottom, right, top = bbox
     if left < right:
         return [bbox]
-    bbox_1 = (left, bottom, utils.X_MAX_3857, top)
-    bbox_2 = (utils.X_MIN_3857, bottom, right, top)
+    bbox_1 = (left, bottom, X_MAX_3857, top)
+    bbox_2 = (X_MIN_3857, bottom, right, top)
     return [bbox_1, bbox_2]
 
 
@@ -96,7 +116,7 @@ def get_macrotile_map(progress, overall_task):
                 width, height = [int(a) for a in [width, height]]
                 left, bottom, right, top = [float(a) for a in [left, bottom, right, top]]
 
-                buffer = 2 * utils.macrotile_buffer_3857
+                buffer = 2 * MACROTILE_BUFFER_3857
                 buffered_bounds = (
                     left - buffer,
                     bottom - buffer,
@@ -106,12 +126,13 @@ def get_macrotile_map(progress, overall_task):
                 tiles = get_intersecting_tiles_dfs(
                     buffered_bounds,
                     mercantile.Tile(x=0, y=0, z=0),
-                    utils.macrotile_z,
+                    MACROTILE_Z,
                 )
                 maxzoom = get_smallest_overzoom(
                     left, bottom, right, top, width, height, mercator_resolutions
                 )
-                maxzoom = max(maxzoom, utils.macrotile_z)
+                # Use at least macrotile zoom. Note glo30 is often below that at high latitudes.
+                maxzoom = max(maxzoom, MACROTILE_Z)
 
                 for tile in tiles:
                     if (tile.x, tile.y) not in macrotile_map:
@@ -159,9 +180,9 @@ def add_group_ids(macrotile_map, progress, overall_task):
 
 
 def get_aggregation_tiles_dfs(candidate, macrotile_map):
-    if candidate.z == utils.macrotile_z:
+    if candidate.z == MACROTILE_Z:
         return [candidate]
-    macrotiles = list(mercantile.children(candidate, zoom=utils.macrotile_z))
+    macrotiles = list(mercantile.children(candidate, zoom=MACROTILE_Z))
     group_ids = set({})
     for macrotile in macrotiles:
         tile_tuple = (macrotile.x, macrotile.y)
@@ -174,7 +195,7 @@ def get_aggregation_tiles_dfs(candidate, macrotile_map):
         maxzoom = 0
         for part in group_id:
             maxzoom = max(maxzoom, part[1])
-        if candidate.z >= maxzoom - utils.num_overviews:
+        if candidate.z >= maxzoom - NUM_OVERVIEWS:
             return [candidate]
     result = []
     for child in mercantile.children(candidate, zoom=candidate.z + 1):
@@ -187,8 +208,8 @@ def get_aggregation_tiles(macrotile_map, progress, overall_task):
     for tile_tuple in macrotile_map.keys():
         candidates.add(
             mercantile.parent(
-                mercantile.Tile(x=tile_tuple[0], y=tile_tuple[1], z=utils.macrotile_z),
-                zoom=utils.macrotile_z - utils.num_overviews,
+                mercantile.Tile(x=tile_tuple[0], y=tile_tuple[1], z=MACROTILE_Z),
+                zoom=MACROTILE_Z - NUM_OVERVIEWS,
             )
         )
     candidates = sorted(candidates, key=lambda t: (t.z, t.x, t.y))
@@ -207,13 +228,13 @@ def get_aggregation_tiles(macrotile_map, progress, overall_task):
 
 def write_aggregation_items(macrotile_map, aggregation_tiles, aggregation_id, progress, overall_task):
     folder = 'aggregation-store/{}'.format(aggregation_id)
-    utils.create_folder(folder)
+    os.makedirs(folder, exist_ok=True)
     total = len(aggregation_tiles)
     step = progress.add_task('write aggregation csv', total=max(total, 1))
     written = 0
     skipped = 0
     for aggregation_tile in aggregation_tiles:
-        macrotiles = list(mercantile.children(aggregation_tile, zoom=utils.macrotile_z))
+        macrotiles = list(mercantile.children(aggregation_tile, zoom=MACROTILE_Z))
         lines = ['source,filename,maxzoom\n']
         line_tuples = set({})
         child_z = 0
@@ -254,8 +275,37 @@ def write_aggregation_items(macrotile_map, aggregation_tiles, aggregation_id, pr
     progress.advance(overall_task)
 
 
+def get_aggregation_item_string(aggregation_id, filename):
+    filepath = 'aggregation-store/{}/{}'.format(aggregation_id, filename)
+    if not os.path.isfile(filepath):
+        return None
+    with open(filepath) as f:
+        result = ''.join([line.strip() for line in f.readlines()])
+    return result.strip()
+
+
+def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id):
+    # Content comparison vs previous aggregation (same approach as upstream covering).
+    filepaths = sorted(
+        glob('aggregation-store/{}/*-aggregation.csv'.format(current_aggregation_id))
+    )
+    if last_aggregation_id is None:
+        return [filepath.split('/')[-1] for filepath in filepaths]
+
+    dirty_filenames = []
+    for filepath in filepaths:
+        filename = filepath.split('/')[-1]
+        current = get_aggregation_item_string(current_aggregation_id, filename)
+        last = get_aggregation_item_string(last_aggregation_id, filename)
+        if current != last:
+            dirty_filenames.append(filename)
+    return dirty_filenames
+
+
 def write_aggregation_todos(progress, overall_task):
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [
+        folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))
+    ]
     aggregation_id = aggregation_ids[-1]
     if len(aggregation_ids) < 2:
         dirty_filepaths = sorted(
@@ -267,7 +317,7 @@ def write_aggregation_todos(progress, overall_task):
             )
         )
     else:
-        dirty_filenames = utils.get_dirty_aggregation_filenames(
+        dirty_filenames = get_dirty_aggregation_filenames(
             aggregation_id, aggregation_ids[-2]
         )
         dirty_filepaths = [
@@ -298,7 +348,7 @@ def main():
         aggregation_tiles = get_aggregation_tiles(macrotile_map, progress, overall)
 
         aggregation_id = str(ULID())
-        utils.create_folder('aggregation-store/{}'.format(aggregation_id))
+        os.makedirs('aggregation-store/{}'.format(aggregation_id), exist_ok=True)
         progress.update(overall, description='4/5 write csv ({})'.format(aggregation_id))
         write_aggregation_items(
             macrotile_map, aggregation_tiles, aggregation_id, progress, overall

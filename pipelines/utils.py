@@ -1,73 +1,41 @@
-import subprocess
-from pathlib import Path
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "imagecodecs>=2023.3.16",
+#   "mercantile>=1.2.1",
+#   "numpy>=1.24.4",
+#   "pmtiles>=3.8.1",
+#   "rasterio>=1.3.11",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# ///
+
 from glob import glob
-import json
 import math
 import os
-import hashlib
 
 import numpy as np
-
-from rasterio.warp import transform_bounds
 import mercantile
 import imagecodecs
 from pmtiles.tile import zxy_to_tileid, tileid_to_zxy, TileType, Compression
 from pmtiles.writer import Writer
 
-macrotile_z = 12
-macrotile_buffer_3857 = 150
-num_overviews = 4
-
-X_MIN_3857, _, X_MAX_3857, __ = transform_bounds('EPSG:4326', 'EPSG:3857', -180, 0, 180, 0)
-# Web Mercator is only valid to ~+-85.05112878 degrees latitude
-Y_MIN_3857 = -X_MAX_3857
-Y_MAX_3857 = X_MAX_3857
-
-_SOURCE_DOMAIN_CACHE = {}
-
-def run_command(command, silent=True, env=None, stream=False):
-    if env is None:
-        env = os.environ.copy()
-    if not silent:
-        print(command)
-    if stream:
-        # Inherit stdout/stderr so tools like wget can show a live progress bar.
-        p = subprocess.Popen(command, shell=True, env=env)
-        p.communicate()
-        if p.returncode != 0:
-            return '', 'command failed with exit code {}'.format(p.returncode)
-        return '', ''
-    p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    stdout, stderr = p.communicate()
-    err = stderr.decode()
-    if err != '' and not silent:
-        print(err)
-    out = stdout.decode()
-    if out != '' and not silent:
-        print(out)
-    return out, err
-
-def create_folder(path):
-    folder_path = Path(path)
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-def get_aggregation_ids():
-    '''
-    returns aggregation ids ordered from oldest to newest
-    '''
-    return list(sorted([path.split('/')[-1] for path in glob('aggregation-store/*')]))
 
 def get_vertical_rounding_multiplier(z):
     return int(2 ** ((10 - z) / 2) / (1 / 256))
+
 
 def get_rounded_elevation_data(data, z):
     # full terrarium resolution of 1/256 at `full_resolution_zoom`
     # multiples of 2 of full terrarium resolution at lower zooms
     full_resolution_zoom = 19
-    factor = 2 ** (full_resolution_zoom - z) / 256 
+    factor = 2 ** (full_resolution_zoom - z) / 256
     if factor > 1:
         factor = 1
     return np.round(data / factor) * factor
+
 
 def save_terrarium_tile(data, filepath):
     filename = filepath.split('/')[-1]
@@ -83,10 +51,11 @@ def save_terrarium_tile(data, filepath):
         rgb[..., 1] = data % 256
         rgb[..., 2] = (data - np.floor(data)) * 256
     except FloatingPointError:
-        print(f'FloatingPointError raised in {filepath}')
+        print('FloatingPointError raised in {}'.format(filepath))
         raise FloatingPointError()
     with open(filepath, 'wb') as f:
         f.write(imagecodecs.webp_encode(rgb, lossless=True))
+
 
 def create_archive(tmp_folder, out_filepath):
     with open(out_filepath, 'wb') as f1:
@@ -99,7 +68,7 @@ def create_archive(tmp_folder, out_filepath):
         max_lat = -math.inf
 
         tile_ids = []
-        for filepath in glob(f'{tmp_folder}/*.webp'):
+        for filepath in glob('{}/*.webp'.format(tmp_folder)):
             filename = filepath.split('/')[-1]
             z, x, y = [int(a) for a in filename.replace('.webp', '').split('-')]
             tile_ids.append(zxy_to_tileid(z=z, x=x, y=y))
@@ -107,7 +76,7 @@ def create_archive(tmp_folder, out_filepath):
 
         for tile_id in tile_ids:
             z, x, y = tileid_to_zxy(tile_id)
-            filepath = f'{tmp_folder}/{z}-{x}-{y}.webp'
+            filepath = '{}/{}-{}-{}.webp'.format(tmp_folder, z, x, y)
             with open(filepath, 'rb') as f2:
                 writer.write_tile(tile_id, f2.read())
 
@@ -143,136 +112,11 @@ def create_archive(tmp_folder, out_filepath):
             },
         )
 
-def get_aggregation_item_string(aggregation_id, filename):
-    result = ''
-    filepath = f'aggregation-store/{aggregation_id}/{filename}'
-    if not os.path.isfile(filepath):
-        return None
-    
-    with open(filepath) as f:
-        result = ''.join([l.strip() for l in f.readlines()])
-    
-    return result.strip()
-
-def get_dirty_aggregation_filenames(current_aggregation_id, last_aggregation_id):
-    filepaths = sorted(glob(f'aggregation-store/{current_aggregation_id}/*-aggregation.csv'))
-
-    if last_aggregation_id is None:
-        return [filepath.split('/')[-1] for filepath in filepaths]
-
-    dirty_filenames = []
-    for filepath in filepaths:
-        filename = filepath.split('/')[-1]
-        current = get_aggregation_item_string(current_aggregation_id, filename)
-        last = get_aggregation_item_string(last_aggregation_id, filename)
-        if current != last:
-            dirty_filenames.append(filename)
-    return dirty_filenames
 
 def get_pmtiles_folder(x, y, z):
     if z < 7:
         return 'pmtiles-store'
     if z == 7:
-        return f'pmtiles-store/{z}-{x}-{y}'
-    else:
-        parent = mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=7)
-        return f'pmtiles-store/{parent.z}-{parent.x}-{parent.y}'
-
-def list_pmtiles_filepaths():
-    # One extra directory level is real (z7 folders). Skip a nested
-    # pmtiles-store self-link created by ln following an existing symlink.
-    paths = list(glob('pmtiles-store/*.pmtiles'))
-    for folder in glob('pmtiles-store/*/'):
-        name = os.path.basename(folder.rstrip('/'))
-        if name == 'pmtiles-store':
-            continue
-        paths.extend(glob(os.path.join(folder, '*.pmtiles')))
-    seen = set()
-    unique = []
-    for path in paths:
-        if not os.path.isfile(path):
-            continue
-        real = os.path.realpath(path)
-        if real in seen:
-            continue
-        seen.add(real)
-        unique.append(path)
-    return unique
-
-def get_source_domain(source):
-    if source in _SOURCE_DOMAIN_CACHE:
-        return _SOURCE_DOMAIN_CACHE[source]
-    metadata_path = '../source-catalog/{}/metadata.json'.format(source)
-    domain = 'land'
-    if os.path.isfile(metadata_path):
-        with open(metadata_path) as f:
-            metadata = json.load(f)
-        domain = metadata.get('domain', 'land')
-    if domain not in ('land', 'ocean', 'both', 'mask'):
-        raise ValueError('invalid domain {!r} for source {}'.format(domain, source))
-    _SOURCE_DOMAIN_CACHE[source] = domain
-    return domain
-
-
-def clamp_bounds_3857(left, bottom, right, top):
-    left = max(left, X_MIN_3857)
-    right = min(right, X_MAX_3857)
-    bottom = max(bottom, Y_MIN_3857)
-    top = min(top, Y_MAX_3857)
-    return left, bottom, right, top
-
-
-# group source items by maxzoom and source
-def get_grouped_source_items(filepath):
-    lines = []
-    with open(filepath) as f:
-        lines = f.readlines()
-    lines = lines[1:] # skip header
-    line_tuples = []
-    for line in lines:
-        source, filename, maxzoom = line.strip().split(',')
-        maxzoom = int(maxzoom)
-        line_tuples.append((
-            -maxzoom,
-            source,
-            filename
-        ))
-    line_tuples = sorted(line_tuples)
-    grouped_source_items = []
-
-    first_line_tuple = line_tuples[0]
-    last_group_signature = (first_line_tuple[0], first_line_tuple[1])
-    current_group = [{
-        'maxzoom': -first_line_tuple[0],
-        'source': first_line_tuple[1],
-        'filename': first_line_tuple[2],
-        'domain': get_source_domain(first_line_tuple[1]),
-    }]
-    for line_tuple in line_tuples[1:]:
-        current_group_signature = (line_tuple[0], line_tuple[1])
-        if current_group_signature != last_group_signature:
-            grouped_source_items.append(current_group)
-            current_group = []
-            last_group_signature = current_group_signature
-        current_group.append({
-            'maxzoom': -line_tuple[0],
-            'source': line_tuple[1],
-            'filename': line_tuple[2],
-            'domain': get_source_domain(line_tuple[1]),
-        })
-    grouped_source_items.append(current_group)
-    return grouped_source_items
-
-class HashWriter:
-    def __init__(self, f):
-        self.f = f
-        self.md5 = hashlib.md5()
-    def write(self, data):
-        self.md5.update(data)
-        return self.f.write(data)
-    def tell(self):
-        return self.f.tell()
-    def flush(self):
-        return self.f.flush()
-    def close(self):
-        return self.f.close()
+        return 'pmtiles-store/{}-{}-{}'.format(z, x, y)
+    parent = mercantile.parent(mercantile.Tile(x=x, y=y, z=z), zoom=7)
+    return 'pmtiles-store/{}-{}-{}'.format(parent.z, parent.x, parent.y)

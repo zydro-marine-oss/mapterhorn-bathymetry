@@ -171,16 +171,13 @@ We now bundle these files by creating tile pyramids with multiple zoom levels.
 ## Requirements
 
 - gdal: https://mothergeo-py.readthedocs.io/en/latest/development/how-to/gdal-ubuntu-pkg.html#install-gdal-ogr
-- uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- pixi: `curl -fsSL https://pixi.sh/install.sh | sh`
 - just: https://github.com/casey/just?tab=readme-ov-file#installation
 - aws cli: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 - wget
 - curl
 - un7z
 - unzip
-
-Upstream mapterhorn now uses pixi + PEP 723 script metadata (`pixi run --script ...`).
-This fork still runs via uv (`uv run python ...`) and keeps `pipelines/pyproject.toml`.
 
 ## Hardware
 
@@ -199,32 +196,32 @@ Run the pipeline with the following steps:
 First, to populate the aggregation-store folder with aggregation and downsampling items that the pipeline will work on later, run:
 
 ```bash
-uv run python aggregation_covering.py
-uv run python downsampling_covering.py
+pixi run --script aggregation_covering.py
+pixi run --script downsampling_covering.py
 ```
 
 Then, start in a separate shell the downloader process:
 
 ```bash
-uv run python downloader.py
+pixi run --script downloader.py
 ```
 
 Then, to run the pipeline on a single node, run:
 
 ```bash
-uv run python aggregation_run.py && uv run python downsampling_run.py
+pixi run --script aggregation_run.py && pixi run --script downsampling_run.py
 ```
 
 To run the pipeline on multiple nodes, run once the manager in its own shell:
 
 ```bash
-uv run python manager.py
+pixi run --script manager.py
 ```
 
 and then on each node start a worker with:
 
 ```bash
-uv run python worker.py
+pixi run --script worker.py
 ```
 
 Spawn only one manager. You can spawn multiple workers on different nodes. Make sure that the nodes all have access to the same `aggregation-store/`, `task-store/`, `source-store/`, and `pmtiles-store/` folders for example by using a network share drive.
@@ -232,17 +229,17 @@ Spawn only one manager. You can spawn multiple workers on different nodes. Make 
 After the aggregation and downsampling are done, bundle the tiles with:
 
 ```bash
-uv run python bundle.py 1
+pixi run --script bundle.py 1
 ```
 
 Create a downloads_urls.json file with:
 
 ```bash
-uv run python download_urls.py v1.2.3
+pixi run --script download_urls.py v1.2.3
 ```
 
 Create an attribution.json file with:
 
 ```bash
-uv run python attribution.py
+pixi run --script attribution.py
 ```

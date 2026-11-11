@@ -1,3 +1,22 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "imagecodecs>=2023.3.16",
+#   "mercantile>=1.2.1",
+#   "numpy>=1.24.4",
+#   "pmtiles>=3.8.1",
+#   "rasterio>=1.3.11",
+#   "rich>=13.0.0",
+#   "scipy>=1.10.1",
+# ]
+#
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+#
+# [tool.pixi.dependencies]
+# gdal = "==3.13.3"
+# ///
+
 # Execute dirty aggregation jobs (reproject → merge → tile).
 # Requires downloader.py staging files into tmp-store/.
 from glob import glob
@@ -12,7 +31,6 @@ import aggregation_merge
 import aggregation_reproject
 import aggregation_tile
 import progress_util
-import utils
 
 # Set in worker processes via Pool initializer
 _STATUS_QUEUE = None
@@ -104,7 +122,7 @@ def _drain_status(status_queue, progress, active_tasks, max_active=8):
 
 
 def main():
-    aggregation_ids = utils.get_aggregation_ids()
+    aggregation_ids = [folder.split('/')[-1] for folder in sorted(glob('aggregation-store/*'))]
     aggregation_id = aggregation_ids[-1]
     dirty_filepaths = [
         filepath.replace('.todo', '')

@@ -90,7 +90,7 @@ We iterate over the source item groups starting with the most important one and 
 1. Call gdal to make a virtual raster (vrt) of all source images
 2. Call gdal to warp the vrt to web mercator
 3. Call gdal to reproject the data
-4. Apply a shoreline domain mask (land vs ocean) so land DEMs that fill the sea with `0` do not block bathymetry, and ocean sources do not paint over land. Requires `mask-store/shoreline/land_3857.gpkg` from `just ../source-catalog/s2coast/`.
+4. Apply a shoreline domain mask (land vs ocean) so land DEMs that fill the sea with `0` do not block bathymetry, and ocean sources do not paint over land. Ocean-domain elevations are also capped at 0 MSL. Requires `mask-store/shoreline/land_3857.gpkg` from `just ../source-catalog/s2coast/`.
 5. Check with rasterio if the resulting tif has nodata pixels. Break if not, else continue with the next source item group.
 
 Now that we have reprojected the data to web mercator, we need to merge the tifs of different source item groups.

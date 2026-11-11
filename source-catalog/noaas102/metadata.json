@@ -1,0 +1,11 @@
+{
+    "name": "NOAA S-102 Bathymetric Surface",
+    "website": "https://noaa-s102-pds.s3.amazonaws.com/README.html",
+    "license": "US Government Work / Public Domain",
+    "producer": "NOAA Office of Coast Survey, National Ocean Service, National Oceanic and Atmospheric Administration",
+    "producer_short": "NOAA",
+    "resolution": 16.0,
+    "access_year": 2026,
+    "domain": "ocean",
+    "priority": 1
+}

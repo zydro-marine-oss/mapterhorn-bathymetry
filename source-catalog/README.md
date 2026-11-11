@@ -84,13 +84,15 @@ Example `swissalti3d/metadata.json`:
 | domain | Meaning |
 |--------|---------|
 | `land` | Terrain DEM (default if omitted) |
-| `ocean` | Bathymetry — masked to water during aggregation |
+| `ocean` | Bathymetry — masked to water during aggregation; elevations capped at 0 MSL |
 | `both` | True topobathy — no shoreline masking |
 | `mask` | Shoreline data only (`s2coast`), not elevation |
 
+Optional `"priority"` (integer, default `0`): when two sources share the same `maxzoom`, the higher priority wins before lexicographic source name. Example: `noaas102` uses `"priority": 1` so it beats `gebco` on ties.
+
 Aggregation uses a shoreline mask (S2Coast-2023 + GSHHG Antarctica) so land DEMs and ocean bathymetry do not overwrite each other. After each source group is warped to Web Mercator, the domain rule above is applied, then existing nodata-fill + seam blending runs. Higher native resolution still wins via `maxzoom`.
 
-Prepare the shoreline once from `pipelines/` with `just ../source-catalog/s2coast/` before running aggregation that includes ocean sources. For bathymetry, set `"domain": "ocean"`.
+Prepare the shoreline once from `pipelines/` with `just ../source-catalog/s2coast/` before running aggregation that includes ocean sources. For bathymetry, set `"domain": "ocean"` (e.g. `gebco`, `noaas102`).
 
 ## Adding a Source
 

@@ -23,7 +23,7 @@ import rasterio
 
 NODATA = -9999
 LAND_3857_GPKG = 'mask-store/shoreline/land_3857.gpkg'
-_SOURCE_DOMAIN_CACHE = {}
+_SOURCE_METADATA_CACHE = {}
 
 
 def run_command(command):
@@ -34,19 +34,30 @@ def run_command(command):
     return stdout.decode(), stderr.decode()
 
 
-def get_source_domain(source):
-    if source in _SOURCE_DOMAIN_CACHE:
-        return _SOURCE_DOMAIN_CACHE[source]
+def _load_source_metadata(source):
+    if source in _SOURCE_METADATA_CACHE:
+        return _SOURCE_METADATA_CACHE[source]
     metadata_path = '../source-catalog/{}/metadata.json'.format(source)
-    domain = 'land'
+    metadata = {}
     if os.path.isfile(metadata_path):
         with open(metadata_path) as f:
             metadata = json.load(f)
-        domain = metadata.get('domain', 'land')
+    domain = metadata.get('domain', 'land')
     if domain not in ('land', 'ocean', 'both', 'mask'):
         raise ValueError('invalid domain {!r} for source {}'.format(domain, source))
-    _SOURCE_DOMAIN_CACHE[source] = domain
-    return domain
+    priority = int(metadata.get('priority', 0))
+    parsed = {'domain': domain, 'priority': priority}
+    _SOURCE_METADATA_CACHE[source] = parsed
+    return parsed
+
+
+def get_source_domain(source):
+    return _load_source_metadata(source)['domain']
+
+
+def get_source_priority(source):
+    # Higher priority wins when maxzoom ties (after maxzoom, before source name).
+    return _load_source_metadata(source)['priority']
 
 
 def get_grouped_source_items(filepath):
@@ -58,29 +69,30 @@ def get_grouped_source_items(filepath):
     for line in lines:
         source, filename, maxzoom = line.strip().split(',')
         maxzoom = int(maxzoom)
-        line_tuples.append((-maxzoom, source, filename))
+        # Sort key: higher maxzoom, then higher priority, then source name.
+        line_tuples.append((-maxzoom, -get_source_priority(source), source, filename))
     line_tuples = sorted(line_tuples)
     grouped_source_items = []
 
     first_line_tuple = line_tuples[0]
-    last_group_signature = (first_line_tuple[0], first_line_tuple[1])
+    last_group_signature = (first_line_tuple[0], first_line_tuple[2])
     current_group = [{
         'maxzoom': -first_line_tuple[0],
-        'source': first_line_tuple[1],
-        'filename': first_line_tuple[2],
-        'domain': get_source_domain(first_line_tuple[1]),
+        'source': first_line_tuple[2],
+        'filename': first_line_tuple[3],
+        'domain': get_source_domain(first_line_tuple[2]),
     }]
     for line_tuple in line_tuples[1:]:
-        current_group_signature = (line_tuple[0], line_tuple[1])
+        current_group_signature = (line_tuple[0], line_tuple[2])
         if current_group_signature != last_group_signature:
             grouped_source_items.append(current_group)
             current_group = []
             last_group_signature = current_group_signature
         current_group.append({
             'maxzoom': -line_tuple[0],
-            'source': line_tuple[1],
-            'filename': line_tuple[2],
-            'domain': get_source_domain(line_tuple[1]),
+            'source': line_tuple[2],
+            'filename': line_tuple[3],
+            'domain': get_source_domain(line_tuple[2]),
         })
     grouped_source_items.append(current_group)
     return grouped_source_items
@@ -130,6 +142,9 @@ def apply_domain_mask(elevation, land_mask, domain):
         return out
     if domain == 'ocean':
         out[land_mask == 1] = NODATA
+        # Cap at 0 MSL so coarse coastal ramps / drying heights cannot ridge above sea level.
+        valid = out != NODATA
+        out[valid] = np.minimum(out[valid], 0)
         return out
     # land (default): drop ocean pixels that are sea-level fill ( >= 0 )
     ocean = land_mask == 0

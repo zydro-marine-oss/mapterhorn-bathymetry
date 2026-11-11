@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from mapterhorn/pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py noaas102
+    pixi run --script source_s102_to_cog.py noaas102
+    pixi run --script source_bounds.py noaas102
+    pixi run --script source_polygonize.py noaas102 32
+    pixi run --script source_create_tarball.py noaas102

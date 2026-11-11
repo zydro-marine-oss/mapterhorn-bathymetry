@@ -1,0 +1,36 @@
+%PDF-1.4
+1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
+2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
+3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>endobj
+4 0 obj<< /Length 978 >>stream
+BT /F1 11 Tf
+1 0 0 1 50 750 Tm (NOAA S-102 Bathymetric Surface Data) Tj
+1 0 0 1 50 734 Tm () Tj
+1 0 0 1 50 718 Tm (This product includes data from the NOAA Office of Coast Survey S-102) Tj
+1 0 0 1 50 702 Tm (Bathymetric Surface dataset distributed via the NOAA Open Data Dissemination) Tj
+1 0 0 1 50 686 Tm (Program on AWS \(s3://noaa-s102-pds\).) Tj
+1 0 0 1 50 670 Tm () Tj
+1 0 0 1 50 654 Tm (United States government works are generally not subject to copyright in the) Tj
+1 0 0 1 50 638 Tm (United States and may be used freely. See:) Tj
+1 0 0 1 50 622 Tm (https://noaa-s102-pds.s3.amazonaws.com/README.html) Tj
+1 0 0 1 50 606 Tm (http://www.nauticalcharts.noaa.gov) Tj
+1 0 0 1 50 590 Tm () Tj
+1 0 0 1 50 574 Tm (Hydrographic survey data is subject to rapid change. These products may include) Tj
+1 0 0 1 50 558 Tm (bathymetric data from a variety of sources and are not intended to replace) Tj
+1 0 0 1 50 542 Tm (official NOAA Electronic Navigational Charts \(ENCs\).) Tj
+ET
+endstream
+endobj
+5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000056 00000 n 
+0000000111 00000 n 
+0000000235 00000 n 
+0000001262 00000 n 
+trailer<< /Size 6 /Root 1 0 R >>
+startxref
+1330
+%%EOF

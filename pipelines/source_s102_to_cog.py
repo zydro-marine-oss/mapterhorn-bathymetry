@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
+#   "numpy>=1.24.4",
 # ]
 #
 # [tool.pixi.workspace]
@@ -12,17 +13,30 @@
 # ///
 
 # Convert NOAA S-102 HDF5 tiles to elevation GeoTIFFs in EPSG:4326.
+# S-102 fill is typically 1e6; map it to pipeline nodata -9999 and drop any bleed.
 from glob import glob
 import os
 import sys
 from multiprocessing import Pool
-import subprocess
 
+import numpy as np
+from osgeo import gdal
 
-def run_command(command):
-    p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = p.communicate()
-    return p.returncode, stdout.decode(), stderr.decode()
+gdal.UseExceptions()
+
+NODATA = -9999.0
+# S-102 DCF-2 fill; also treat absurd magnitudes as invalid after warp.
+S102_FILL_DEFAULT = 1.0e6
+ABSURD_ABS = 1.0e5
+
+COG_OPTIONS = [
+    'BLOCKSIZE=512',
+    'OVERVIEWS=NONE',
+    'SPARSE_OK=YES',
+    'BIGTIFF=YES',
+    'COMPRESS=LERC',
+    'MAX_Z_ERROR=0.001',
+]
 
 
 def s102_to_cog(filepath):
@@ -33,19 +47,65 @@ def s102_to_cog(filepath):
             os.remove(filepath)
         return
 
-    # DEPTH_OR_ELEVATION=ELEVATION: positive up. Mixed UTM -> EPSG:4326 for one CRS per source.
-    cmd = (
-        'GDAL_CACHEMAX=512 gdalwarp -oo DEPTH_OR_ELEVATION=ELEVATION '
-        '-t_srs EPSG:4326 -dstnodata -9999 -r bilinear -b 1 '
-        '-of COG -co BLOCKSIZE=512 -co OVERVIEWS=NONE -co SPARSE_OK=YES '
-        '-co BIGTIFF=YES -co COMPRESS=LERC -co MAX_Z_ERROR=0.001 '
-        '"{}" "{}"'
-    ).format(filepath, filepath_out)
-    code, out, err = run_command(cmd)
-    if code != 0 or not os.path.isfile(filepath_out):
-        raise RuntimeError('gdalwarp failed for {}:\n{}\n{}'.format(filepath, out, err))
+    tmp_path = filepath_out + '.tmp.tif'
+    if os.path.isfile(tmp_path):
+        os.remove(tmp_path)
+
+    src = gdal.OpenEx(filepath, open_options=['DEPTH_OR_ELEVATION=ELEVATION'])
+    if src is None:
+        raise RuntimeError('failed to open S-102 dataset {}'.format(filepath))
+    try:
+        band = src.GetRasterBand(1)
+        src_nodata = band.GetNoDataValue()
+        if src_nodata is None:
+            src_nodata = S102_FILL_DEFAULT
+
+        # Warp with explicit nodata so bilinear does not smear the 1e6 fill into valid cells.
+        gdal.Warp(
+            tmp_path,
+            src,
+            format='GTiff',
+            dstSRS='EPSG:4326',
+            srcNodata=src_nodata,
+            dstNodata=NODATA,
+            resampleAlg=gdal.GRA_Bilinear,
+            bands=[1],
+            warpOptions=['UNIFIED_SRC_NODATA=YES'],
+            creationOptions=['TILED=YES', 'COMPRESS=DEFLATE', 'BIGTIFF=IF_NEEDED'],
+        )
+    finally:
+        src = None
+
+    ds = gdal.Open(tmp_path, gdal.GA_Update)
+    if ds is None:
+        raise RuntimeError('failed to open warped temp {}'.format(tmp_path))
+    try:
+        band = ds.GetRasterBand(1)
+        data = band.ReadAsArray()
+        invalid = (
+            ~np.isfinite(data)
+            | (data == src_nodata)
+            | (data == NODATA)
+            | (np.abs(data) >= ABSURD_ABS)
+        )
+        data = data.astype(np.float32, copy=False)
+        data[invalid] = NODATA
+        band.WriteArray(data)
+        band.SetNoDataValue(NODATA)
+        band.FlushCache()
+    finally:
+        ds = None
+
+    gdal.Translate(
+        filepath_out,
+        tmp_path,
+        format='COG',
+        noData=NODATA,
+        creationOptions=COG_OPTIONS,
+    )
+    os.remove(tmp_path)
     os.remove(filepath)
-    print('converted {}'.format(filepath_out))
+    print('converted {} (src_nodata={})'.format(filepath_out, src_nodata))
 
 
 def main(source):

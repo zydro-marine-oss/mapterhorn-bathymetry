@@ -51,14 +51,15 @@ def s102_to_cog(filepath):
     if os.path.isfile(tmp_path):
         os.remove(tmp_path)
 
+    src_nodata = S102_FILL_DEFAULT
     src = gdal.OpenEx(filepath, open_options=['DEPTH_OR_ELEVATION=ELEVATION'])
     if src is None:
         raise RuntimeError('failed to open S-102 dataset {}'.format(filepath))
     try:
         band = src.GetRasterBand(1)
-        src_nodata = band.GetNoDataValue()
-        if src_nodata is None:
-            src_nodata = S102_FILL_DEFAULT
+        reported = band.GetNoDataValue()
+        if reported is not None:
+            src_nodata = float(reported)
 
         # Warp with explicit nodata so bilinear does not smear the 1e6 fill into valid cells.
         gdal.Warp(
@@ -69,7 +70,7 @@ def s102_to_cog(filepath):
             srcNodata=src_nodata,
             dstNodata=NODATA,
             resampleAlg=gdal.GRA_Bilinear,
-            bands=[1],
+            srcBands=[1],
             warpOptions=['UNIFIED_SRC_NODATA=YES'],
             creationOptions=['TILED=YES', 'COMPRESS=DEFLATE', 'BIGTIFF=IF_NEEDED'],
         )

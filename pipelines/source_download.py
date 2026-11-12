@@ -112,13 +112,64 @@ def short_label(index, total, filename, width=40):
     return prefix + name
 
 
+def mark_cached(progress, task_id, index, total, filename, size):
+    progress.update(
+        task_id,
+        total=max(size, 1),
+        completed=max(size, 1),
+        description=short_label(index, total, filename) + ' cached',
+    )
+    return 'cached'
+
+
+def remote_content_length(url):
+    # HEAD so we can skip complete locals without re-GETting bodies (S3 often ignores Range).
+    try:
+        head = requests.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
+        if head.status_code >= 400:
+            return None
+        content_length = head.headers.get('Content-Length')
+        if content_length is None:
+            return None
+        return int(content_length)
+    except requests.RequestException:
+        return None
+
+
 def download_one(source, url, index, total, progress, task_id):
     if _stop.is_set():
         raise InterruptedError('cancelled')
 
     filename = filename_from_url(url)
     dest = os.path.join('source-store', source, filename)
-    existing = os.path.getsize(dest) if os.path.isfile(dest) else 0
+    tmp = dest + '.tmp'
+
+    # S-102 (and similar): converter keeps .tif and deletes .h5 — treat .tif as done.
+    if filename.endswith('.h5'):
+        tif_dest = dest[:-3] + '.tif'
+        if os.path.isfile(tif_dest) and os.path.getsize(tif_dest) > 0:
+            return mark_cached(
+                progress, task_id, index, total, filename, os.path.getsize(tif_dest)
+            )
+
+    # Final path already present — never overwrite unless HEAD proves a size mismatch.
+    # (Previously we required a successful HEAD match; HEAD failures caused full re-downloads.)
+    dest_size = os.path.getsize(dest) if os.path.isfile(dest) else 0
+    if dest_size > 0:
+        remote_size = remote_content_length(url)
+        if remote_size is None or dest_size == remote_size:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+            return mark_cached(progress, task_id, index, total, filename, dest_size)
+        # Local final differs from remote length — replace via tmp below.
+    else:
+        remote_size = remote_content_length(url)
+
+    # Resume only from the sideloaded .tmp; replace dest atomically when finished.
+    existing = os.path.getsize(tmp) if os.path.isfile(tmp) else 0
+    if existing > 0 and remote_size is not None and existing == remote_size:
+        os.replace(tmp, dest)
+        return mark_cached(progress, task_id, index, total, filename, existing)
 
     headers = {}
     if existing > 0:
@@ -133,18 +184,19 @@ def download_one(source, url, index, total, progress, task_id):
         if _stop.is_set():
             raise InterruptedError('cancelled')
 
-        # Local file already complete (resume Range past EOF)
+        # Local tmp already complete (resume Range past EOF)
         if existing > 0 and response.status_code == 416:
-            progress.update(
-                task_id,
-                total=existing,
-                completed=existing,
-                description=short_label(index, total, filename) + ' cached',
-            )
-            return 'cached'
+            if remote_size is None or existing == remote_size:
+                os.replace(tmp, dest)
+                return mark_cached(progress, task_id, index, total, filename, existing)
+            existing = 0
 
+        content_length = response.headers.get('Content-Length')
         # Server ignored Range and resent the whole file
         if existing > 0 and response.status_code == 200:
+            if content_length is not None and existing == int(content_length):
+                os.replace(tmp, dest)
+                return mark_cached(progress, task_id, index, total, filename, existing)
             existing = 0
             mode = 'wb'
         elif existing > 0 and response.status_code == 206:
@@ -156,7 +208,6 @@ def download_one(source, url, index, total, progress, task_id):
             response.raise_for_status()
 
         total_size = None
-        content_length = response.headers.get('Content-Length')
         if content_length is not None:
             remaining = int(content_length)
             if response.status_code == 206:
@@ -166,13 +217,8 @@ def download_one(source, url, index, total, progress, task_id):
 
         # Nothing left to fetch
         if total_size is not None and existing >= total_size:
-            progress.update(
-                task_id,
-                total=existing,
-                completed=existing,
-                description=short_label(index, total, filename) + ' cached',
-            )
-            return 'cached'
+            os.replace(tmp, dest)
+            return mark_cached(progress, task_id, index, total, filename, existing)
 
         progress.update(
             task_id,
@@ -182,7 +228,8 @@ def download_one(source, url, index, total, progress, task_id):
             visible=True,
         )
 
-        with open(dest, mode) as out:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(tmp, mode) as out:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if _stop.is_set():
                     raise InterruptedError('cancelled')
@@ -190,6 +237,16 @@ def download_one(source, url, index, total, progress, task_id):
                     continue
                 out.write(chunk)
                 progress.advance(task_id, len(chunk))
+
+        # Require full size when known so a cancelled stream cannot promote a partial.
+        final_size = os.path.getsize(tmp)
+        if total_size is not None and final_size != total_size:
+            raise RuntimeError(
+                'incomplete download for {}: got {} bytes, expected {}'.format(
+                    filename, final_size, total_size
+                )
+            )
+        os.replace(tmp, dest)
 
         progress.update(
             task_id,

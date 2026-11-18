@@ -1,0 +1,9 @@
+{
+    "name": "Litto3D Bretagne",
+    "website": "https://diffusion.shom.fr/donnees/altimetrie-littorale/litto3d-bretagne-2018-2021.html",
+    "license": "Licence Ouverte / Etalab",
+    "producer": "Shom / IGN",
+    "resolution": 5.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

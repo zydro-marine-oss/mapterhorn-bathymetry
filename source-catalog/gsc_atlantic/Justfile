@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py gsc_atlantic
+    pixi run --script source_to_4326.py gsc_atlantic
+    pixi run --script source_bounds.py gsc_atlantic
+    pixi run --script source_polygonize.py gsc_atlantic 32
+    pixi run --script source_create_tarball.py gsc_atlantic

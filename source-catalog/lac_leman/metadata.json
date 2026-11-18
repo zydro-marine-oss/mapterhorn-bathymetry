@@ -1,0 +1,9 @@
+{
+    "name": "swissBATHY3D Lac Léman",
+    "website": "https://www.swisstopo.admin.ch/en/height-model-swissbathy3d",
+    "license": "swisstopo open data (free use with attribution)",
+    "producer": "Federal Office of Topography swisstopo",
+    "resolution": 2.0,
+    "access_year": 2026,
+    "domain": "both"
+}

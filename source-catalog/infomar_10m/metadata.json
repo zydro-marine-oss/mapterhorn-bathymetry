@@ -1,0 +1,9 @@
+{
+    "name": "INFOMAR bathymetry 10 m",
+    "website": "https://www.infomar.ie/",
+    "license": "CC-BY 4.0",
+    "producer": "Geological Survey Ireland and the Marine Institute (INFOMAR)",
+    "resolution": 10.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

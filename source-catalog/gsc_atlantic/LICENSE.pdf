@@ -1,0 +1,47 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [5 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 540 >>
+stream
+BT
+/F1 11 Tf
+50 780 Td
+14 TL
+(GSC Atlantic bathymetric compilation 100 m) Tj
+T* () Tj
+T* (Producer: Geological Survey of Canada / Natural Resources Canada) Tj
+T* () Tj
+T* (Licence: Open Government Licence ? Canada) Tj
+T* () Tj
+T* (Website: https://open.canada.ca/data/en/dataset/335408ab-e7c9-581f-09fe-44487e1fd213) Tj
+T* () Tj
+T* (This note records the licence named by the publisher for the mapterhorn-bathymetry) Tj
+T* (catalog. Read the current terms on the publisher's site before redistributing derived) Tj
+T* (tiles.) Tj
+T* () Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000776 00000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+902
+%%EOF

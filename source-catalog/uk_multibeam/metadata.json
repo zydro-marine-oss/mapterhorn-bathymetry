@@ -1,0 +1,9 @@
+{
+    "name": "Environment Agency coastal multibeam bathymetry",
+    "website": "https://www.data.gov.uk/dataset/52b3a813-69c6-4b6f-8684-fd0bdc4aa71b/multibeam-bathymetry",
+    "license": "Open Government Licence v3.0",
+    "producer": "Environment Agency",
+    "resolution": 0.5,
+    "access_year": 2026,
+    "domain": "ocean"
+}

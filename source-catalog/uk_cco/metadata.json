@@ -1,0 +1,9 @@
+{
+    "name": "CCO multibeam bathymetry",
+    "website": "https://coastalmonitoring.org/cco/",
+    "license": "Open Government Licence",
+    "producer": "Channel Coastal Observatory",
+    "resolution": 1.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

@@ -7,6 +7,7 @@ bundle-store
 polygon-store
 tar-store
 mask-store
+datum-store
 tmp-store
 planetiler.jar
 index.md

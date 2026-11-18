@@ -1,0 +1,9 @@
+{
+    "name": "DORIS Dorset seabed survey",
+    "website": "https://coastalmonitoring.org/cco/",
+    "license": "Crown copyright; reuse except navigation, as stated in the survey metadata",
+    "producer": "Channel Coastal Observatory (DORIS partners)",
+    "resolution": 1.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

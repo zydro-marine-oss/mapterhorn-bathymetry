@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py great_lakes
+    pixi run --script source_unzip.py great_lakes
+    pixi run --script source_to_4326.py great_lakes
+    pixi run --script source_bounds.py great_lakes
+    pixi run --script source_polygonize.py great_lakes 32
+    pixi run --script source_create_tarball.py great_lakes

@@ -1,0 +1,9 @@
+{
+    "name": "GSC Atlantic bathymetric compilation 100 m",
+    "website": "https://open.canada.ca/data/en/dataset/335408ab-e7c9-581f-09fe-44487e1fd213",
+    "license": "Open Government Licence – Canada",
+    "producer": "Geological Survey of Canada / Natural Resources Canada",
+    "resolution": 100.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py vaklodingen
+    pixi run --script source_to_4326.py vaklodingen
+    pixi run --script source_bounds.py vaklodingen
+    pixi run --script source_polygonize.py vaklodingen 32
+    pixi run --script source_create_tarball.py vaklodingen

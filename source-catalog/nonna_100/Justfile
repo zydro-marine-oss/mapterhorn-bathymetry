@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py nonna_100
+    pixi run --script source_to_4326.py nonna_100
+    pixi run --script source_bounds.py nonna_100
+    pixi run --script source_polygonize.py nonna_100 32
+    pixi run --script source_create_tarball.py nonna_100

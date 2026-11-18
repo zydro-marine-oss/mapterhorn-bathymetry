@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    python3 ../source-catalog/batnas/download.py
+    pixi run --script source_to_4326.py batnas
+    pixi run --script source_bounds.py batnas
+    pixi run --script source_polygonize.py batnas 32
+    pixi run --script source_create_tarball.py batnas

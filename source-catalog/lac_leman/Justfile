@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py lac_leman
+    pixi run --script source_unzip.py lac_leman
+    pixi run --script source_to_4326.py lac_leman
+    pixi run --script source_bounds.py lac_leman
+    pixi run --script source_polygonize.py lac_leman 32
+    pixi run --script source_create_tarball.py lac_leman

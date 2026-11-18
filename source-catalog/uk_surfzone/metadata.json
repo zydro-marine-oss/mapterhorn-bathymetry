@@ -1,0 +1,9 @@
+{
+    "name": "Environment Agency SurfZone DEM 2019",
+    "website": "https://environment.data.gov.uk/dataset/77e6f743-d708-4909-a80f-9510b7dbaa16",
+    "license": "Open Government Licence v3.0",
+    "producer": "Environment Agency",
+    "resolution": 2.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

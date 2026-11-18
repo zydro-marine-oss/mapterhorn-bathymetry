@@ -12,7 +12,7 @@ This branch keeps the upstream mapterhorn pipeline (for the most part). We add a
 
 - Optional source `domain` (`land` / `ocean` / `both` / `mask`) in `source-catalog/*/metadata.json`
 - Shoreline masking (S2Coast + GSHHG Antarctica) during aggregation
-- GEBCO, NOAA S-102, and other data added as ocean data sources
+- GEBCO, NOAA S-102, and further public bathymetry surveys are ocean or lake sources. The list, licences, and access notes are in [source-catalog/BATHYMETRY.md](./source-catalog/BATHYMETRY.md).
 
 Prepare the shoreline, then ocean sources, from `pipelines/`:
 

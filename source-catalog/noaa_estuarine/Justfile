@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py noaa_estuarine
+    pixi run --script source_netcdf_to_cog.py noaa_estuarine
+    pixi run --script source_bounds.py noaa_estuarine
+    pixi run --script source_polygonize.py noaa_estuarine 32
+    pixi run --script source_create_tarball.py noaa_estuarine

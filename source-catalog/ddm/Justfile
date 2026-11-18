@@ -1,0 +1,5 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    echo "The 50 m Danish depth model is published at Dataforsyningen (dataset 4707). The public page did not expose a stable file URL (the download is a short-lived weblink). This source is not fetched until that URL is known. Do not substitute a third-party copy."
+    exit 1

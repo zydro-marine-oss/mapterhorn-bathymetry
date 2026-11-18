@@ -1,0 +1,9 @@
+{
+    "name": "CHS NONNA-10",
+    "website": "https://open.canada.ca/data/en/dataset/d3881c4c-650d-4070-bf9b-1e00aabf0a1d",
+    "license": "CHS NONNA Licence",
+    "producer": "Canadian Hydrographic Service",
+    "resolution": 10.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py nz_coastal
+    pixi run --script source_to_4326.py nz_coastal
+    pixi run --script source_bounds.py nz_coastal
+    pixi run --script source_polygonize.py nz_coastal 32
+    pixi run --script source_create_tarball.py nz_coastal

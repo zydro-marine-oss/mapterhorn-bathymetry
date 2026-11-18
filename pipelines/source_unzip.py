@@ -15,6 +15,7 @@
 from glob import glob
 import sys
 import zipfile
+import tarfile
 import shutil
 import os
 from multiprocessing import Pool
@@ -70,6 +71,14 @@ def translate_images(filepath, source, suffix):
 def is_7z_head_file(filepath):
     return filepath.endswith('.7z') or filepath.endswith('.7z.001')
 
+def untar(filepath, source):
+    filename = filepath.split('/')[-1]
+    dest = f'source-store/{source}/{filename}-tmp/'
+    os.makedirs(dest, exist_ok=True)
+    with tarfile.open(filepath, 'r:*') as archive:
+        archive.extractall(dest)
+    run_command(f'rm "{filepath}"')
+
 
 def main(source):
     filepaths = sorted(glob(f'source-store/{source}/*'))
@@ -77,6 +86,8 @@ def main(source):
     for filepath in filepaths:
         if zipfile.is_zipfile(filepath):
             unzip(filepath, source)
+        elif filepath.endswith('.tar.gz') or filepath.endswith('.tgz'):
+            untar(filepath, source)
         elif is_7z_head_file(filepath):
             un7z(filepath, source)
 

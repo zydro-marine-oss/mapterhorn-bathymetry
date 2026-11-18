@@ -1,0 +1,9 @@
+{
+    "name": "WSV DGM-W bathymetry and terrain",
+    "website": "https://via.bund.de/wsv/inspire/",
+    "license": "GeoNutzV",
+    "producer": "Wasserstraßen- und Schifffahrtsverwaltung des Bundes",
+    "resolution": 2.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

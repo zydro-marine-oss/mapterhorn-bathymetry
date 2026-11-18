@@ -136,11 +136,34 @@ def remote_content_length(url):
         return None
 
 
-def download_one(source, url, index, total, progress, task_id):
+def parse_file_list(path):
+    # One record per line. A leading # is a comment. Optional second column,
+    # separated by a tab, is the local filename when the URL has no unique
+    # basename (WCS GetCoverage, weblink gateways).
+    items = []
+    seen = set()
+    with open(path) as f:
+        for raw in f:
+            line = raw.strip()
+            if line == '' or line.startswith('#'):
+                continue
+            if '\t' in line:
+                url, filename = line.split('\t', 1)
+                url = url.strip()
+                filename = filename.strip()
+            else:
+                url = line
+                filename = filename_from_url(url)
+            if filename in seen:
+                raise ValueError('duplicate filename {} in {}'.format(filename, path))
+            seen.add(filename)
+            items.append((url, filename))
+    return items
+
+
+def download_one(source, url, filename, index, total, progress, task_id):
     if _stop.is_set():
         raise InterruptedError('cancelled')
-
-    filename = filename_from_url(url)
     dest = os.path.join('source-store', source, filename)
     tmp = dest + '.tmp'
 
@@ -265,9 +288,8 @@ def download_one(source, url, index, total, progress, task_id):
 def download_from_internet(source, workers=DEFAULT_WORKERS):
     global _executor
 
-    with open('../source-catalog/{}/file_list.txt'.format(source)) as f:
-        urls = [l.strip() for l in f.readlines() if l.strip()]
-    total = len(urls)
+    items = parse_file_list('../source-catalog/{}/file_list.txt'.format(source))
+    total = len(items)
     if total == 0:
         print('no urls in file_list.txt')
         return
@@ -293,7 +315,7 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
     executor = ThreadPoolExecutor(max_workers=workers)
     _executor = executor
     pending = {}
-    url_iter = enumerate(urls, start=1)
+    url_iter = enumerate(items, start=1)
     # Reuse a small pool of live bars instead of 25k Rich tasks.
     free_slots = []
 
@@ -302,10 +324,11 @@ def download_from_internet(source, workers=DEFAULT_WORKERS):
             return free_slots.pop()
         return progress.add_task('starting…', total=None)
 
-    def submit_one(index, url):
+    def submit_one(index, item):
+        url, filename = item
         slot = take_slot()
         future = executor.submit(
-            download_one, source, url, index, total, progress, slot
+            download_one, source, url, filename, index, total, progress, slot
         )
         pending[future] = (url, slot)
 

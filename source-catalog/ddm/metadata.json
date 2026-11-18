@@ -1,0 +1,9 @@
+{
+    "name": "Danmarks Dybdemodel 50 m",
+    "website": "https://dataforsyningen.dk/data/4707",
+    "license": "SDFI / Dataforsyningen terms",
+    "producer": "SDFI",
+    "resolution": 50.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

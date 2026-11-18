@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py uk_multibeam
+    pixi run --script source_unzip.py uk_multibeam
+    pixi run --script source_to_4326.py uk_multibeam
+    pixi run --script source_bounds.py uk_multibeam
+    pixi run --script source_polygonize.py uk_multibeam 32
+    pixi run --script source_create_tarball.py uk_multibeam

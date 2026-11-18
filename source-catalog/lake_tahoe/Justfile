@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py lake_tahoe
+    pixi run --script source_e00_to_tif.py lake_tahoe EPSG:32610
+    pixi run --script source_to_4326.py lake_tahoe
+    pixi run --script source_bounds.py lake_tahoe
+    pixi run --script source_polygonize.py lake_tahoe 32
+    pixi run --script source_create_tarball.py lake_tahoe

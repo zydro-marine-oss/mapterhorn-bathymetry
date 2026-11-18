@@ -1,0 +1,10 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py infomar_10m
+    pixi run --script source_unzip.py infomar_10m
+    pixi run --script source_set_crs.py infomar_10m EPSG:4326
+    pixi run --script source_to_4326.py infomar_10m
+    pixi run --script source_bounds.py infomar_10m
+    pixi run --script source_polygonize.py infomar_10m 32
+    pixi run --script source_create_tarball.py infomar_10m

@@ -10,9 +10,11 @@ Mapterhorn has four main pipelines that run in sequence: Source, Aggregation, Do
 
 The source pipeline has multiple parts that are needed to bring source files into a normalized file format.
 
-`source_download.py`: Downloads files from URLs in `file_list.txt` file to the folder `source-store/{source}`
+`source_download.py`: Downloads files from URLs in `file_list.txt` to `source-store/{source}`. A line starting with `#` is a comment. If a URL has no unique filename, put a tab and the local filename after it.
 
-`source_unzip.py`: If a source contains ZIP files, this script can be used to unpack them.
+`source_unzip.py`: If a source contains ZIP, 7z, or tar archives, this script unpacks them and translates the rasters to LERC GeoTIFFs.
+
+`source_to_4326.py`: Reprojects every GeoTIFF in a source to EPSG:4326. Sources that ship in more than one projected CRS need this before aggregation, which builds one VRT per source.
 
 `source_to_cog.py`: Use this script to make sure that all files are LERC compressed and tiled internally. Note that this is a bit of a mis-nomer because it does not actually create COGs since no overviews are added to the GeoTIFFs.
 
@@ -83,7 +85,7 @@ If an item is identical to the corresponding one of the second-latest aggregatio
 
 Else we need to process the aggregation item. For this we first copy all relevant source image files from the source folder, which potentially is on a HDD, to a folder in the aggregation store, which we recommend is on an SSD because we need fast random access from multiple concurrent threads.
 
-Then we group the source items by source and maxzoom, and order them such that higher maxzoom is more important than lower, and earlier lexicographic names are more important than later.
+Then we group the source items by source and maxzoom, and order them such that higher maxzoom is more important than lower, and earlier lexicographic names are more important than later. When maxzoom ties, a higher metadata `priority` wins.
 
 We iterate over the source item groups starting with the most important one and do the following:
 

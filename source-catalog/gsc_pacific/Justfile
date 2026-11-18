@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py gsc_pacific
+    pixi run --script source_gdb_tiles.py gsc_pacific
+    pixi run --script source_bounds.py gsc_pacific
+    pixi run --script source_polygonize.py gsc_pacific 32
+    pixi run --script source_create_tarball.py gsc_pacific

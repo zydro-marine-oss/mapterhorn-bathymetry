@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py gldb
+    pixi run --script source_gldb.py gldb
+    pixi run --script source_bounds.py gldb
+    pixi run --script source_polygonize.py gldb 32
+    pixi run --script source_create_tarball.py gldb

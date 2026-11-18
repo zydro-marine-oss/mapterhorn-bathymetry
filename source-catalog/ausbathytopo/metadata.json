@@ -1,0 +1,9 @@
+{
+    "name": "AusBathyTopo 250 m",
+    "website": "https://www.ausseabed.gov.au/data/bathymetry",
+    "license": "CC-BY 4.0",
+    "producer": "Geoscience Australia / AusSeabed",
+    "resolution": 250.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

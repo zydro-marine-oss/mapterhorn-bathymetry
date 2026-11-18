@@ -41,10 +41,10 @@ def main():
                 'website': metadata['website'],
                 'license': metadata['license'],
                 'producer': metadata['producer'],
-                'license_pdf': f'https://github.com/mapterhorn/mapterhorn/blob/main/source-catalog/{source}/LICENSE.pdf',
+                'license_pdf': 'https://github.com/zydro-marine-oss/mapterhorn-bathymetry/blob/main/source-catalog/{}/LICENSE.pdf'.format(source),
                 'resolution': metadata['resolution'],
                 'access_year': metadata['access_year'],
-            }      
+            }
         meta = None
         with open(f'meta-store/tar/{source}.json') as f:
             meta = json.load(f)

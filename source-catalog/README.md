@@ -103,7 +103,7 @@ Notes:
 - Licenses which are share-alike or which do not allow commercial usage will not be accepted.
 - The metadata should include precise references to the producer.
 - Individual GeoTiffs in the source should not be larger than say 10 GB, otherwise the polygonize step gets slow. You can slice a larger tif into multiple smaller ones with `source_slice.py`.
-- For bathymetry, set `"domain": "ocean"`.
+- For bathymetry, set `"domain": "ocean"`. A lake survey is `"domain": "both"` so the coastline mask does not drop it. Finer native resolution still wins.
 ## Updating a Source
 
 Mapterhorn assumes that the contents of a file do not change as long as the filename stays the same. Source producers are expected to publish files with updated names if they publish new data.

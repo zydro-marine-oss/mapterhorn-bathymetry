@@ -1,0 +1,9 @@
+{
+    "name": "New Zealand coastal 1 m DEM",
+    "website": "https://registry.opendata.aws/nz-coastal/",
+    "license": "CC-BY 4.0",
+    "producer": "Toitū Te Whenua Land Information New Zealand",
+    "resolution": 1.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

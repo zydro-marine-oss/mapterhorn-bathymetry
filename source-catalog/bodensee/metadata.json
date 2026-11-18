@@ -1,0 +1,9 @@
+{
+    "name": "Lake Constance bathymetry 3 m",
+    "website": "https://doi.org/10.1594/PANGAEA.855987",
+    "license": "CC-BY 3.0",
+    "producer": "IGKB (Wessels et al. 2015) via PANGAEA",
+    "resolution": 3.0,
+    "access_year": 2026,
+    "domain": "both"
+}

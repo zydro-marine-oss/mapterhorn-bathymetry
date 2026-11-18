@@ -1,0 +1,8 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py cudem_amsam
+    pixi run --script source_to_4326.py cudem_amsam
+    pixi run --script source_bounds.py cudem_amsam
+    pixi run --script source_polygonize.py cudem_amsam 32
+    pixi run --script source_create_tarball.py cudem_amsam

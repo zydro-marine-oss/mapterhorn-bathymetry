@@ -1,0 +1,9 @@
+{
+    "name": "Southwest Indian Ocean Bathymetric Compilation",
+    "website": "https://doi.org/10.1594/PANGAEA.880618",
+    "license": "CC-BY 3.0",
+    "producer": "Dorschel et al. / Alfred Wegener Institute",
+    "resolution": 250.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

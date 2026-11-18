@@ -1,0 +1,9 @@
+{
+    "name": "African Great Lakes bathymetry",
+    "website": "https://doi.org/10.7910/DVN/ITCOGT",
+    "license": "CC0 1.0",
+    "producer": "Hamilton et al. 2022",
+    "resolution": 50.0,
+    "access_year": 2026,
+    "domain": "both"
+}

@@ -1,0 +1,9 @@
+{
+    "name": "Lake Tahoe bathymetry",
+    "website": "https://pubs.usgs.gov/dds/dds-55/pacmaps/lt_data.htm",
+    "license": "US Government work / public domain",
+    "producer": "USGS",
+    "resolution": 10.0,
+    "access_year": 2026,
+    "domain": "both"
+}

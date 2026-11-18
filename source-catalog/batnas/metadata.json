@@ -1,0 +1,9 @@
+{
+    "name": "BATNAS national bathymetry",
+    "website": "https://tanahair.indonesia.go.id/",
+    "license": "BIG Ina-Geoportal terms (attribution; no resale)",
+    "producer": "Badan Informasi Geospasial (BIG)",
+    "resolution": 180.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

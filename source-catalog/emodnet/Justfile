@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py emodnet
+    pixi run --script source_unzip.py emodnet
+    pixi run --script source_to_4326.py emodnet
+    pixi run --script source_bounds.py emodnet
+    pixi run --script source_polygonize.py emodnet 32
+    pixi run --script source_create_tarball.py emodnet

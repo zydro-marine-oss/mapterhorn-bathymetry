@@ -1,0 +1,9 @@
+{
+    "name": "Kartverket sea terrain model 50 m",
+    "website": "https://kartkatalog.geonorge.no/metadata/dybdedata-terrengmodeller-50-meters-grid/67a3a191-49cc-45bc-baf0-eaaf7c513549",
+    "license": "CC-BY 4.0",
+    "producer": "Kartverket",
+    "resolution": 50.0,
+    "access_year": 2026,
+    "domain": "ocean"
+}

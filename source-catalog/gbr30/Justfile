@@ -1,0 +1,9 @@
+# Source preparation pipeline to be run from the pipelines folder
+[no-cd]
+default:
+    pixi run --script source_download.py gbr30
+    pixi run --script source_unzip.py gbr30
+    pixi run --script source_to_4326.py gbr30
+    pixi run --script source_bounds.py gbr30
+    pixi run --script source_polygonize.py gbr30 32
+    pixi run --script source_create_tarball.py gbr30
